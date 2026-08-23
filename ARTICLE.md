@@ -276,6 +276,20 @@ Add to your `.cursor/mcp.json`:
 
 ---
 
+---
+
+## 🤖 Teaching Your AI Agent to Use It Automatically (`CLAUDE.md` / `GEMINI.md` / `.cursorrules`)
+
+To ensure your AI assistant picks `code_search` automatically instead of falling back to dumb keyword grep whenever you open a new session, add this rule to your project's instruction file (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, or `.cursorrules`):
+
+```markdown
+## Code Discovery & Semantic Search Rules
+- **Rule:** When looking for features, domain logic, components, or concepts described in natural language (e.g., "how are discounts applied", "where is user session initialized", "loyalty points logic"), **ALWAYS call `code_search` FIRST**.
+- **Why:** `code_search` performs semantic vector search across code comments, markdown specs, and source files to pinpoint relevant files instantly without requiring exact keyword matches.
+- **Fallback:** Only fall back to manual grep or directory scanning if semantic search yields no matches.
+```
+
+---
 ## 🧪 How to Verify It Is Working
 
 Once installed, you can verify that `code-search-mcp` is working with three quick checks:
