@@ -156,9 +156,13 @@ export class VectorStore {
       return [];
     }
 
-    const stopWords = new Set(['the', 'and', 'for', 'with', 'where', 'how', 'what', 'this', 'that', 'from', 'code', 'file']);
+    const stopWords = new Set([
+      'the', 'and', 'for', 'with', 'where', 'how', 'what', 'this', 'that', 'from',
+      'code', 'file', 'find', 'search', 'get', 'show', 'when', 'which', 'about', 'into'
+    ]);
+
     const rawTokens = queryText
-      .split(/[\s,;:!?()[\]{}<>"]+/)
+      .split(/[\s,;:!?()[\]{}<>"'`]+/)
       .map((t) => t.trim())
       .filter((t) => t.length >= 2 && !stopWords.has(t.toLowerCase()));
 
@@ -166,11 +170,39 @@ export class VectorStore {
       return [];
     }
 
-    const tokens = rawTokens.slice(0, 5);
-    const filterClauses = tokens.map((token) => {
+    const tokenSet = new Set<string>();
+    for (const token of rawTokens) {
+      tokenSet.add(token);
+
+      // Split CamelCase or PascalCase (e.g. MarginReductionCfdEngine -> Margin, Reduction, Cfd, Engine)
+      const camelParts = token.replace(/([a-z])([A-Z])/g, '$1 $2').split(' ');
+      if (camelParts.length > 1) {
+        for (const part of camelParts) {
+          if (part.length >= 2 && !stopWords.has(part.toLowerCase())) {
+            tokenSet.add(part);
+          }
+        }
+      }
+
+      // Split snake_case or kebab-case
+      const subParts = token.split(/[-_.]+/);
+      if (subParts.length > 1) {
+        for (const part of subParts) {
+          if (part.length >= 2 && !stopWords.has(part.toLowerCase())) {
+            tokenSet.add(part);
+          }
+        }
+      }
+    }
+
+    // Base SQL filter on user entered raw tokens first
+    const primaryTokens = rawTokens.slice(0, 5);
+    const filterClauses = primaryTokens.map((token) => {
       const escaped = token.replace(/'/g, "''").replace(/\\/g, '\\\\');
       return `\`content\` LIKE '%${escaped}%' OR \`filePath\` LIKE '%${escaped}%'`;
     });
+
+    const isJsonQuery = queryText.toLowerCase().includes('json');
 
     try {
       const whereClause = filterClauses.join(' OR ');
@@ -181,19 +213,30 @@ export class VectorStore {
           let matchCount = 0;
           const lowerContent = (record.content || '').toLowerCase();
           const lowerPath = (record.filePath || '').toLowerCase();
+          const rawContent = record.content || '';
 
-          for (const token of tokens) {
-            const t = token.toLowerCase();
-            if (lowerPath.includes(t)) matchCount += 3;
-            let pos = 0;
-            while ((pos = lowerContent.indexOf(t, pos)) !== -1) {
-              matchCount += 1;
-              pos += t.length;
-              if (matchCount >= 20) break;
-            }
+          // 1. Primary / Exact Token Matches (High Weight)
+          for (const token of primaryTokens) {
+            const tLower = token.toLowerCase();
+            if (lowerPath.includes(tLower)) matchCount += 10;
+            if (rawContent.includes(token)) matchCount += 8; // Exact case match
+            else if (lowerContent.includes(tLower)) matchCount += 4;
           }
 
-          const score = Math.min(1, matchCount * 0.1);
+          // 2. Sub-part Token Matches (Low Weight for disambiguation)
+          for (const token of tokenSet) {
+            if (primaryTokens.includes(token)) continue;
+            const tLower = token.toLowerCase();
+            if (lowerPath.includes(tLower)) matchCount += 2;
+            if (lowerContent.includes(tLower)) matchCount += 1;
+          }
+
+          let score = Math.min(1, matchCount * 0.1);
+          // De-prioritize raw static JSON dictionary files when searching code/concepts
+          if (!isJsonQuery && (record.filePath?.endsWith('.json') || record.language === 'json')) {
+            score *= 0.5;
+          }
+
           return {
             filePath: record.filePath,
             startLine: record.startLine,
@@ -211,7 +254,7 @@ export class VectorStore {
   }
 
   public async searchHybrid(queryVector: number[], queryText: string, limit: number = 10): Promise<SearchResult[]> {
-    const candidateLimit = Math.max(limit * 3, 30);
+    const candidateLimit = Math.max(limit * 4, 40);
     const [vectorHits, lexicalHits] = await Promise.all([
       this.searchVector(queryVector, candidateLimit),
       this.searchLexical(queryText, candidateLimit)
@@ -227,11 +270,15 @@ export class VectorStore {
 
     const rrfMap = new Map<string, { result: SearchResult; rrfScore: number; vectorScore: number }>();
     const RRF_K = 60;
+    const isJsonQuery = queryText.toLowerCase().includes('json');
 
     for (let i = 0; i < vectorHits.length; i++) {
       const hit = vectorHits[i];
       const key = `${hit.filePath}:${hit.startLine}:${hit.endLine}`;
-      const rrf = 1.0 / (RRF_K + (i + 1));
+      let rrf = 1.0 / (RRF_K + (i + 1));
+      if (!isJsonQuery && (hit.filePath.endsWith('.json') || hit.language === 'json')) {
+        rrf *= 0.6;
+      }
       rrfMap.set(key, {
         result: hit,
         rrfScore: rrf,
@@ -242,7 +289,10 @@ export class VectorStore {
     for (let j = 0; j < lexicalHits.length; j++) {
       const hit = lexicalHits[j];
       const key = `${hit.filePath}:${hit.startLine}:${hit.endLine}`;
-      const rrf = 1.2 / (RRF_K + (j + 1));
+      let rrf = 1.2 / (RRF_K + (j + 1));
+      if (!isJsonQuery && (hit.filePath.endsWith('.json') || hit.language === 'json')) {
+        rrf *= 0.6;
+      }
       const existing = rrfMap.get(key);
       if (existing) {
         existing.rrfScore += rrf;
@@ -257,7 +307,7 @@ export class VectorStore {
 
     const fused = Array.from(rrfMap.values())
       .sort((a, b) => b.rrfScore - a.rrfScore)
-      .slice(0, limit);
+      .slice(0, candidateLimit);
 
     if (fused.length === 0) return [];
 
@@ -291,7 +341,21 @@ export class VectorStore {
       );
     }
 
-    return filtered;
+    // Result Diversity: limit max chunks per file (default: 1 chunk per file for focused results, max 2 if limit > 5)
+    const limit = options.limit ?? 10;
+    const maxPerFile = limit <= 5 ? 1 : 2;
+    const fileChunkCounts = new Map<string, number>();
+    const diverse: SearchResult[] = [];
+
+    for (const res of filtered) {
+      const count = fileChunkCounts.get(res.filePath) || 0;
+      if (count < maxPerFile) {
+        fileChunkCounts.set(res.filePath, count + 1);
+        diverse.push(res);
+      }
+    }
+
+    return diverse;
   }
 
   public async search(
