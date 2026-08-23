@@ -304,22 +304,22 @@ Modern AI coding assistants perform best when equipped with two complementary to
 
 ```
                    ┌─────────────────────────────────────────────────────────┐
-                   │  User: "Where is margin calculation handled?"          │
+                   │  User: "Where is subscription discount handled?"        │
                    └────────────────────────────┬────────────────────────────┘
                                                 │
                                                 ▼
                    ┌─────────────────────────────────────────────────────────┐
                    │ 1. SEMANTIC SEARCH (code_search)                        │
                    │ • Understands intent, concepts, and natural language     │
-                   │ • Finds: margin-reduction-cfd.engine.ts (via JSDoc)     │
+                   │ • Finds: subscription-billing.engine.ts (via JSDoc)     │
                    └────────────────────────────┬────────────────────────────┘
                                                 │
                                                 ▼
                    ┌─────────────────────────────────────────────────────────┐
                    │ 2. AST CODE GRAPH (codegraph_explore)                   │
                    │ • Understands syntax trees, callers, and blast radius   │
-                   │ • Traces: callers into legacy GlobalBuySellData.js       │
-                   │ • Discovers: unit test suites (margin-reduction.spec.ts)│
+                   │ • Traces: callers into legacy LegacyOrderProcessor.js   │
+                   │ • Discovers: unit tests (subscription-billing.spec.ts)  │
                    └─────────────────────────────────────────────────────────┘
 ```
 
@@ -333,9 +333,9 @@ Modern AI coding assistants perform best when equipped with two complementary to
 ### Real-World Case Study: Modern Engine vs Legacy Monolith
 
 In a real enterprise codebase:
-1. **The Modern Engine (`margin-reduction.engine.ts`)** has explicit names (`calculateInitialMarginNeeded`) and rich JSDoc explanations. `code_search` finds it with a **>55% similarity match** in milliseconds.
-2. **The Legacy Core (`GlobalBuySellData.js`)** is a 2,000-line file using old terms (`getFundsNeeded`, `SecurityRequired`) or typos (`marginPrecentage`). Semantic search alone might score it lower.
-3. **The Synergy**: Once `code_search` lands on `margin-reduction.engine.ts`, `codegraph_explore` immediately traces every caller directly into `GlobalBuySellData.js` and maps the blast radius across covering unit tests without guessing!
+1. **The Modern Engine (`subscription-billing.engine.ts`)** has explicit names (`calculateSubscriptionDiscount`) and rich JSDoc explanations. `code_search` finds it with a **>55% similarity match** in milliseconds.
+2. **The Legacy Core (`LegacyOrderProcessor.js`)** is a 2,000-line file using old terms (`getDiscountedTotal`, `applyOldDeduction`) or typos. Semantic search alone might score it lower.
+3. **The Synergy**: Once `code_search` lands on `subscription-billing.engine.ts`, `codegraph_explore` immediately traces every caller directly into `LegacyOrderProcessor.js` and maps the blast radius across covering unit tests without guessing!
 
 ### Recommended Dual Configuration
 
@@ -366,7 +366,7 @@ To ensure your AI assistant picks `code_search` and `codegraph` automatically, a
 ## Code Navigation & Search
 
 1. **CodeGraph (`codegraph_explore`)**: Call FIRST when exploring known symbols, tracking call paths, finding usages, or analyzing blast radius (callers + covering tests).
-2. **Semantic Search (`code_search`)**: Call FIRST when looking for features, domain behaviors, or business logic described in natural language (e.g. "where is margin calculated", "deposit suggestions formatted").
+2. **Semantic Search (`code_search`)**: Call FIRST when looking for features, domain behaviors, or business logic described in natural language (e.g. "where is discount calculated", "checkout suggestions formatted").
 ```
 
 ---

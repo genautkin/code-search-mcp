@@ -38,7 +38,7 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
         {
           name: 'code_search',
           description:
-            'Search the codebase semantically using natural language queries (e.g. "how is payment verified", "margin calculation formula"). Returns relevant code snippets with file paths and line numbers. Supports filtering by directory path, programming language, or codeOnly (to exclude markdown docs).',
+            'Search the codebase semantically using natural language queries (e.g. "how is payment verified", "calculate discount rate"). Returns relevant code snippets with file paths and line numbers. Supports filtering by directory path, programming language, or codeOnly (to exclude markdown docs).',
           inputSchema: {
             type: 'object',
             properties: {
@@ -52,7 +52,7 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
               },
               pathFilter: {
                 type: 'string',
-                description: 'Optional directory or file path substring to restrict search (e.g. "src/CFDTrading", "src/Cashier")'
+                description: 'Optional directory or file path substring to restrict search (e.g. "src/auth", "src/billing")'
               },
               language: {
                 type: 'string',
@@ -109,12 +109,12 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
       const guideText = `# Semantic Code Search — AI Agent Guide
 
 ## When to Use \`code_search\`:
-- Use \`code_search\` FIRST whenever looking for features, domain logic, workflows, UI components, or concepts described in natural language (e.g. "where are deposit payment methods parsed", "margin calculation formula", "chart supervisor line indicator").
+- Use \`code_search\` FIRST whenever looking for features, domain logic, workflows, UI components, or concepts described in natural language (e.g. "where are authentication tokens refreshed", "shopping cart discount formula", "dark mode toggle component").
 - Use \`code_search\` when you DO NOT know the exact variable or function name.
 
 ## Filtering Options:
 - **\`codeOnly: true\`**: Exclude markdown specs/guides to find pure code calculation implementations directly.
-- **\`pathFilter\`**: Restrict search to specific feature areas (e.g. \`pathFilter: "src/CFDTrading"\` or \`pathFilter: "src/Cashier"\`).
+- **\`pathFilter\`**: Restrict search to specific feature areas (e.g. \`pathFilter: "src/auth"\` or \`pathFilter: "src/billing"\`).
 - **\`language\`**: Restrict results by language (e.g. \`language: "typescript"\`, \`"vue"\`, \`"javascript"\`).
 
 ## When to Use Other Tools Instead:

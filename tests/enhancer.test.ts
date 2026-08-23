@@ -20,22 +20,22 @@ describe('Query Enhancer - Stemming & Typo Correction', () => {
 
   it('should correct typos against repository vocabulary', () => {
     const enhancer = new QueryEnhancer();
-    enhancer.addWords('MarginReductionCfdEngine calculateBuySellRequiredMargin PaymentProcessor AuthService');
+    enhancer.addWords('DiscountCalculator calculateRewardTotal PaymentProcessor AuthService');
 
     // Exact matches should not need correction
     expect(enhancer.correctTypo('AuthService')).toBeNull();
 
     // Typos should be corrected
-    expect(enhancer.correctTypo('mrgin')).toBe('Margin');
+    expect(enhancer.correctTypo('discoutn')).toBe('Discount');
     expect(enhancer.correctTypo('paymnet')).toBe('Payment');
   });
 
   it('should enhance query tokens with both corrections and stems', () => {
     const enhancer = new QueryEnhancer();
-    enhancer.addWords('calculateMarkerPosition CIQ Marker');
+    enhancer.addWords('calculateRewardPosition RewardComponent');
 
-    const result = enhancer.enhanceTokens(['marks', 'positioning']);
-    expect(result.stemmed).toContain('mark');
+    const result = enhancer.enhanceTokens(['rewards', 'positioning']);
+    expect(result.stemmed).toContain('reward');
     expect(result.stemmed).toContain('position');
   });
 });
