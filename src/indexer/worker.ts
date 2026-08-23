@@ -6,17 +6,21 @@ import { EmbeddingEngine } from '../embeddings/engine.js';
 import { scanDirectory } from './scanner.js';
 import { chunkCodeFile, normalizePath } from './chunker.js';
 
+import { ProcessLock } from './lock.js';
+
 export class IndexerWorker {
   private config: CodeSearchConfig;
   private store: VectorStore;
   private embeddings: EmbeddingEngine;
   private status: IndexStatus;
   private isRunning: boolean = false;
+  private lock: ProcessLock;
 
   constructor(config: CodeSearchConfig) {
     this.config = config;
     this.store = new VectorStore(config.dbPath);
     this.embeddings = EmbeddingEngine.getInstance(config.embeddingModel);
+    this.lock = new ProcessLock(config.dbPath);
     this.status = {
       state: 'idle',
       progressPercentage: 0,
@@ -40,6 +44,14 @@ export class IndexerWorker {
     if (this.isRunning) {
       return;
     }
+
+    if (!this.lock.acquire()) {
+      const count = await this.store.count();
+      this.status.indexedChunks = count;
+      this.status.state = 'ready';
+      return;
+    }
+
     this.isRunning = true;
 
     try {
@@ -129,6 +141,7 @@ export class IndexerWorker {
       console.error('[code-search-mcp] Indexing worker error:', err);
     } finally {
       this.isRunning = false;
+      this.lock.release();
     }
   }
 

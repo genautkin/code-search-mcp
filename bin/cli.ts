@@ -38,6 +38,8 @@ program
 
       process.on('SIGINT', handleExit);
       process.on('SIGTERM', handleExit);
+      process.stdin.on('close', handleExit);
+      process.stdin.on('end', handleExit);
 
       await start();
       process.stderr.write(`[code-search-mcp] MCP Server running on stdio.\n`);
