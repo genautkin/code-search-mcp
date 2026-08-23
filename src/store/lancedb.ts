@@ -195,11 +195,12 @@ export class VectorStore {
       }
     }
 
-    // Base SQL filter on user entered raw tokens first
+    // Base SQL filter on all extracted tokens using case-insensitive LOWER()
     const primaryTokens = rawTokens.slice(0, 5);
-    const filterClauses = primaryTokens.map((token) => {
-      const escaped = token.replace(/'/g, "''").replace(/\\/g, '\\\\');
-      return `\`content\` LIKE '%${escaped}%' OR \`filePath\` LIKE '%${escaped}%'`;
+    const searchTokens = Array.from(tokenSet).slice(0, 8);
+    const filterClauses = searchTokens.map((token) => {
+      const escaped = token.replace(/'/g, "''").replace(/\\/g, '\\\\').toLowerCase();
+      return `LOWER(\`content\`) LIKE '%${escaped}%' OR LOWER(\`filePath\`) LIKE '%${escaped}%'`;
     });
 
     const isJsonQuery = queryText.toLowerCase().includes('json');

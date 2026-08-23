@@ -215,9 +215,15 @@ export class IndexerWorker {
       output += `No matching code snippets found for query: "${queryText}".`;
     } else {
       results.forEach((res, idx) => {
-        output += `### Match ${idx + 1}: ${res.filePath} (Lines ${res.startLine}-${res.endLine}) [Score: ${(res.score * 100).toFixed(1)}%]\n`;
+        output += `### Match ${idx + 1}: ${res.filePath}:${res.startLine}-${res.endLine} [Score: ${(res.score * 100).toFixed(1)}% | ${res.language || 'text'}]\n`;
         output += '```' + (res.language || '') + '\n';
-        output += res.content + '\n';
+        
+        const lines = res.content.split('\n');
+        const numberedContent = lines
+          .map((line, lineIdx) => `${res.startLine + lineIdx}: ${line}`)
+          .join('\n');
+
+        output += numberedContent + '\n';
         output += '```\n\n';
       });
     }

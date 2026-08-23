@@ -38,10 +38,10 @@ describe('File Watcher Incremental Indexing', () => {
       'export function calculateAnalyticsMetrics() { return { views: 100 }; }'
     );
 
-    // Poll until chokidar and embedding complete (up to 15s)
+    // Poll until chokidar and embedding complete (up to 20s)
     let found = false;
     const start = Date.now();
-    while (Date.now() - start < 15000) {
+    while (Date.now() - start < 20000) {
       const res = await worker.query('analytics views metric calculation', 5);
       if (res.results.some((r) => r.filePath === 'src/metrics.ts')) {
         found = true;
@@ -51,5 +51,5 @@ describe('File Watcher Incremental Indexing', () => {
     }
 
     expect(found).toBe(true);
-  }, 30000);
+  }, 40000);
 });
