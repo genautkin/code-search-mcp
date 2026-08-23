@@ -164,6 +164,15 @@ By default, the database is stored in:
 
 ---
 
+### 5. What happens when you switch Git branches? 🔀
+When you run `git checkout`, `git switch`, or `git pull`:
+1. **Live Watcher Detection**: Git updates files on disk, and the built-in `chokidar` file watcher detects the added, modified, or deleted files in real-time.
+2. **Fast Differential Re-Scan**: It only re-indexes the specific files that changed between the two branches (taking 1–2 seconds instead of minutes).
+3. **Automatic Pruning**: Deleted files or old code chunks from the previous branch are automatically removed from LanceDB.
+4. **Manual Sync**: If you ever want to force a clean full rebuild after a massive merge, simply tell your assistant: *"Run `code_search_reindex` with force: true"*.
+
+---
+
 ## ⚙️ How to Manage Settings & Ignore More Files
 
 By default, `code-search-mcp` automatically ignores binaries (`.png`, `.mp4`, `.zip`), build outputs (`dist/`, `build/`), lockfiles, and any file over 500 KB, as well as honoring your existing **`.gitignore`**.
