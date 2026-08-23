@@ -32,6 +32,13 @@ export interface SearchResult {
   language?: string;
 }
 
+export interface SearchOptions {
+  limit?: number;
+  pathFilter?: string;
+  language?: string;
+  codeOnly?: boolean;
+}
+
 export type IndexingState = 'idle' | 'scanning' | 'indexing' | 'ready' | 'error';
 
 export interface IndexStatus {

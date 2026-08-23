@@ -1,7 +1,7 @@
 import * as lancedb from '@lancedb/lancedb';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CodeChunk, SearchResult } from '../types.js';
+import { CodeChunk, SearchOptions, SearchResult } from '../types.js';
 
 export const TABLE_NAME = 'code_chunks';
 
@@ -271,11 +271,46 @@ export class VectorStore {
     });
   }
 
-  public async search(queryVector: number[], limit: number = 10, queryText?: string): Promise<SearchResult[]> {
-    if (queryText) {
-      return this.searchHybrid(queryVector, queryText, limit);
+  private applyFilters(results: SearchResult[], options?: SearchOptions): SearchResult[] {
+    if (!options) return results;
+    let filtered = results;
+
+    if (options.pathFilter) {
+      const pf = options.pathFilter.toLowerCase().replace(/\\/g, '/');
+      filtered = filtered.filter((r) => r.filePath.toLowerCase().includes(pf));
     }
-    return this.searchVector(queryVector, limit);
+
+    if (options.language) {
+      const lang = options.language.toLowerCase();
+      filtered = filtered.filter((r) => (r.language || '').toLowerCase() === lang);
+    }
+
+    if (options.codeOnly) {
+      filtered = filtered.filter(
+        (r) => r.language !== 'markdown' && !r.filePath.endsWith('.md') && !r.filePath.endsWith('.mdx')
+      );
+    }
+
+    return filtered;
+  }
+
+  public async search(
+    queryVector: number[],
+    options?: number | SearchOptions,
+    queryText?: string
+  ): Promise<SearchResult[]> {
+    const opts: SearchOptions = typeof options === 'number' ? { limit: options } : (options || {});
+    const limit = opts.limit ?? 10;
+    const fetchLimit = (opts.pathFilter || opts.language || opts.codeOnly) ? Math.max(limit * 4, 40) : limit;
+
+    let rawResults: SearchResult[];
+    if (queryText) {
+      rawResults = await this.searchHybrid(queryVector, queryText, fetchLimit);
+    } else {
+      rawResults = await this.searchVector(queryVector, fetchLimit);
+    }
+
+    return this.applyFilters(rawResults, opts).slice(0, limit);
   }
 
   public async count(): Promise<number> {

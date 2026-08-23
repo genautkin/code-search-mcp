@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CodeChunk, CodeSearchConfig, IndexStatus, SearchResult } from '../types.js';
+import { CodeChunk, CodeSearchConfig, IndexStatus, SearchOptions, SearchResult } from '../types.js';
 import { VectorStore } from '../store/lancedb.js';
 import { EmbeddingEngine } from '../embeddings/engine.js';
 import { scanDirectory } from './scanner.js';
@@ -191,13 +191,17 @@ export class IndexerWorker {
     await this.store.deleteByFilePath(normRelPath);
   }
 
-  public async query(queryText: string, limit: number = 10): Promise<{
+  public async query(
+    queryText: string,
+    options?: number | SearchOptions
+  ): Promise<{
     status: IndexStatus;
     results: SearchResult[];
     formattedOutput: string;
   }> {
+    const opts: SearchOptions = typeof options === 'number' ? { limit: options } : (options || {});
     const queryVector = await this.embeddings.embedText(queryText);
-    const results = await this.store.search(queryVector, limit, queryText);
+    const results = await this.store.search(queryVector, opts, queryText);
     const status = this.getStatus();
 
     let output = '';

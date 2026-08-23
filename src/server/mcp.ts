@@ -38,17 +38,29 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
         {
           name: 'code_search',
           description:
-            'Search the codebase semantically using natural language queries (e.g. "how is payment verified", "user authentication flow"). Returns relevant code snippets with file paths and line numbers. If indexing is currently in progress, results are returned from currently indexed files alongside progress status.',
+            'Search the codebase semantically using natural language queries (e.g. "how is payment verified", "margin calculation formula"). Returns relevant code snippets with file paths and line numbers. Supports filtering by directory path, programming language, or codeOnly (to exclude markdown docs).',
           inputSchema: {
             type: 'object',
             properties: {
               query: {
                 type: 'string',
-                description: 'The natural language semantic search query'
+                description: 'The natural language or identifier search query'
               },
               limit: {
                 type: 'number',
                 description: 'Maximum number of results to return (default: 10)'
+              },
+              pathFilter: {
+                type: 'string',
+                description: 'Optional directory or file path substring to restrict search (e.g. "src/CFDTrading", "src/Cashier")'
+              },
+              language: {
+                type: 'string',
+                description: 'Optional programming language filter (e.g. "typescript", "javascript", "vue")'
+              },
+              codeOnly: {
+                type: 'boolean',
+                description: 'If true, excludes markdown documentation files (.md) to prioritize actual code formulas and logic'
               }
             },
             required: ['query']
@@ -97,17 +109,17 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
       const guideText = `# Semantic Code Search — AI Agent Guide
 
 ## When to Use \`code_search\`:
-- Use \`code_search\` FIRST whenever looking for features, domain logic, workflows, UI components, or concepts described in natural language (e.g. "where are deposit payment methods parsed", "order submit confirmation logic", "chart supervisor line indicator").
+- Use \`code_search\` FIRST whenever looking for features, domain logic, workflows, UI components, or concepts described in natural language (e.g. "where are deposit payment methods parsed", "margin calculation formula", "chart supervisor line indicator").
 - Use \`code_search\` when you DO NOT know the exact variable or function name.
 
-## When to use other tools instead:
-- Use **CodeGraph / AST tools** when navigating a known symbol's references, call hierarchy, or type definitions.
-- Use **grep** when searching for an exact literal string constant, error code, or exact CSS class name.
+## Filtering Options:
+- **\`codeOnly: true\`**: Exclude markdown specs/guides to find pure code calculation implementations directly.
+- **\`pathFilter\`**: Restrict search to specific feature areas (e.g. \`pathFilter: "src/CFDTrading"\` or \`pathFilter: "src/Cashier"\`).
+- **\`language\`**: Restrict results by language (e.g. \`language: "typescript"\`, \`"vue"\`, \`"javascript"\`).
 
-## Best Practices for Queries:
-- Write queries as conceptual phrases (e.g. "apply discount code calculation" rather than just "discount").
-- Include domain terms and functional intent in natural language.
-- LanceDB vector similarity handles synonyms, comments, docstrings, and markdown docs automatically.`;
+## When to Use Other Tools Instead:
+- Use **CodeGraph (\`codegraph_explore\`)** when navigating a known symbol's references, call hierarchy, or type definitions.
+- Use **grep** when searching for an exact literal string constant, error code, or exact CSS class name.`;
 
       return {
         content: [
@@ -122,6 +134,9 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
     if (name === 'code_search') {
       const query = (args?.query as string) || '';
       const limit = typeof args?.limit === 'number' ? args.limit : 10;
+      const pathFilter = typeof args?.pathFilter === 'string' ? args.pathFilter : undefined;
+      const language = typeof args?.language === 'string' ? args.language : undefined;
+      const codeOnly = typeof args?.codeOnly === 'boolean' ? args.codeOnly : undefined;
 
       if (!query.trim()) {
         return {
@@ -134,7 +149,13 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
         };
       }
 
-      const res = await worker.query(query, limit);
+      const res = await worker.query(query, {
+        limit,
+        pathFilter,
+        language,
+        codeOnly
+      });
+
       return {
         content: [
           {
