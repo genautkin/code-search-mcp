@@ -76,6 +76,15 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
               }
             }
           }
+        },
+        {
+          name: 'code_search_guide',
+          description:
+            'Get best practices and usage instructions for AI agents on how and when to use code_search.',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
         }
       ]
     };
@@ -83,6 +92,32 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+
+    if (name === 'code_search_guide') {
+      const guideText = `# Semantic Code Search — AI Agent Guide
+
+## When to Use \`code_search\`:
+- Use \`code_search\` FIRST whenever looking for features, domain logic, workflows, UI components, or concepts described in natural language (e.g. "where are deposit payment methods parsed", "order submit confirmation logic", "chart supervisor line indicator").
+- Use \`code_search\` when you DO NOT know the exact variable or function name.
+
+## When to use other tools instead:
+- Use **CodeGraph / AST tools** when navigating a known symbol's references, call hierarchy, or type definitions.
+- Use **grep** when searching for an exact literal string constant, error code, or exact CSS class name.
+
+## Best Practices for Queries:
+- Write queries as conceptual phrases (e.g. "apply discount code calculation" rather than just "discount").
+- Include domain terms and functional intent in natural language.
+- LanceDB vector similarity handles synonyms, comments, docstrings, and markdown docs automatically.`;
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: guideText
+          }
+        ]
+      };
+    }
 
     if (name === 'code_search') {
       const query = (args?.query as string) || '';

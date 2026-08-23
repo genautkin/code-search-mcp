@@ -78,4 +78,15 @@ describe('MCP Server Integration', () => {
     expect(content[0].text).toContain('Index Status: READY');
     expect(content[0].text).toContain('Progress: 100%');
   });
+
+  it('should return agent guide via code_search_guide', async () => {
+    const result = await client.callTool({
+      name: 'code_search_guide',
+      arguments: {}
+    });
+
+    const content = result.content as any[];
+    expect(content[0].text).toContain('Semantic Code Search — AI Agent Guide');
+    expect(content[0].text).toContain('When to Use `code_search`');
+  });
 });

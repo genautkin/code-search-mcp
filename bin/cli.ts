@@ -5,6 +5,8 @@ import * as path from 'path';
 import { findProjectRoot, loadConfig } from '../src/config/loader.js';
 import { createMcpServer } from '../src/server/mcp.js';
 
+import { logger } from '../src/logger.js';
+
 const program = new Command();
 
 program
@@ -22,6 +24,15 @@ program
         config.embeddingModel = options.model;
       }
 
+      // Initialize persistent file logger
+      logger.init(path.dirname(config.dbPath));
+      logger.info('Starting code-search-mcp session', {
+        projectRoot: config.projectRoot,
+        dbPath: config.dbPath,
+        model: config.embeddingModel,
+        pid: process.pid
+      });
+
       // Output diagnostic info to stderr (stdio stdout is reserved for MCP protocol)
       process.stderr.write(`[code-search-mcp] Initializing in: ${config.projectRoot}\n`);
       process.stderr.write(`[code-search-mcp] Database path: ${config.dbPath}\n`);
@@ -30,6 +41,7 @@ program
 
       const handleExit = async () => {
         try {
+          logger.info('Stopping code-search-mcp session', { pid: process.pid });
           await stop();
         } finally {
           process.exit(0);
@@ -42,8 +54,10 @@ program
       process.stdin.on('end', handleExit);
 
       await start();
+      logger.info('MCP Server started on stdio');
       process.stderr.write(`[code-search-mcp] MCP Server running on stdio.\n`);
     } catch (err) {
+      logger.error('Fatal startup error', { error: String(err) });
       process.stderr.write(`[code-search-mcp] Fatal error: ${err}\n`);
       process.exit(1);
     }
