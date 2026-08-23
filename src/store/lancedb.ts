@@ -2,6 +2,7 @@ import * as lancedb from '@lancedb/lancedb';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CodeChunk, SearchOptions, SearchResult } from '../types.js';
+import { QueryEnhancer } from '../indexer/query-enhancer.js';
 
 export const TABLE_NAME = 'code_chunks';
 
@@ -9,6 +10,7 @@ export class VectorStore {
   private dbPath: string;
   private db: lancedb.Connection | null = null;
   private table: lancedb.Table | null = null;
+  public queryEnhancer: QueryEnhancer = new QueryEnhancer();
 
   constructor(dbPath: string) {
     this.dbPath = dbPath;
@@ -24,6 +26,14 @@ export class VectorStore {
 
     if (tableNames.includes(TABLE_NAME)) {
       this.table = await this.db.openTable(TABLE_NAME);
+      try {
+        const rows = await this.table.query().select(['filePath']).limit(5000).toArray();
+        for (const row of rows) {
+          if (row.filePath) this.queryEnhancer.addWords(row.filePath);
+        }
+      } catch {
+        // non-blocking
+      }
     } else {
       // Seed table with dummy schema record and immediately delete it
       const seedRecord = {
@@ -82,6 +92,11 @@ export class VectorStore {
 
   public async insertChunks(chunks: CodeChunk[]): Promise<void> {
     if (chunks.length === 0) return;
+
+    for (const chunk of chunks) {
+      if (chunk.content) this.queryEnhancer.addWords(chunk.content);
+      if (chunk.filePath) this.queryEnhancer.addWords(chunk.filePath);
+    }
 
     const records = chunks.map((chunk) => ({
       id: chunk.id,
@@ -170,8 +185,12 @@ export class VectorStore {
       return [];
     }
 
+    // Enhance tokens with Stemming and Typo correction
+    const enhanced = this.queryEnhancer.enhanceTokens(rawTokens);
+    const candidateTokens = new Set<string>([...rawTokens, ...enhanced.tokens, ...enhanced.stemmed]);
+
     const tokenSet = new Set<string>();
-    for (const token of rawTokens) {
+    for (const token of candidateTokens) {
       tokenSet.add(token);
 
       // Split CamelCase or PascalCase (e.g. MarginReductionCfdEngine -> Margin, Reduction, Cfd, Engine)
@@ -195,9 +214,9 @@ export class VectorStore {
       }
     }
 
-    // Base SQL filter on all extracted tokens using case-insensitive LOWER()
-    const primaryTokens = rawTokens.slice(0, 5);
-    const searchTokens = Array.from(tokenSet).slice(0, 8);
+    // Base SQL filter on primary tokens and stemmed tokens
+    const primaryTokens = Array.from(new Set([...rawTokens, ...enhanced.tokens])).slice(0, 5);
+    const searchTokens = Array.from(tokenSet).slice(0, 10);
     const filterClauses = searchTokens.map((token) => {
       const escaped = token.replace(/'/g, "''").replace(/\\/g, '\\\\').toLowerCase();
       return `LOWER(\`content\`) LIKE '%${escaped}%' OR LOWER(\`filePath\`) LIKE '%${escaped}%'`;
