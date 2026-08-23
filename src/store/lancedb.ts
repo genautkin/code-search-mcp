@@ -77,6 +77,18 @@ export class VectorStore {
     await table.delete(`\`filePath\` = '${escaped}'`);
   }
 
+  public async deleteByFilePaths(filePaths: string[]): Promise<void> {
+    if (filePaths.length === 0) return;
+    const table = this.ensureTable();
+    for (let i = 0; i < filePaths.length; i += 50) {
+      const batch = filePaths.slice(i, i + 50);
+      const condition = batch
+        .map((fp) => `\`filePath\` = '${fp.replace(/'/g, "\\'")}'`)
+        .join(' OR ');
+      await table.delete(condition);
+    }
+  }
+
   public async search(queryVector: number[], limit: number = 10): Promise<SearchResult[]> {
     const table = this.ensureTable();
     const rowCount = await table.countRows();

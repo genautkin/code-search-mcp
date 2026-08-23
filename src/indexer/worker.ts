@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CodeSearchConfig, IndexStatus, SearchResult } from '../types.js';
+import { CodeChunk, CodeSearchConfig, IndexStatus, SearchResult } from '../types.js';
 import { VectorStore } from '../store/lancedb.js';
 import { EmbeddingEngine } from '../embeddings/engine.js';
 import { scanDirectory } from './scanner.js';
@@ -79,20 +79,43 @@ export class IndexerWorker {
 
       for (let i = 0; i < scan.filesToIndex.length; i += batchSize) {
         const batch = scan.filesToIndex.slice(i, i + batchSize);
+        const batchChunks: CodeChunk[] = [];
+        const batchRelPaths: string[] = [];
 
         for (const file of batch) {
           this.status.currentFile = file.relativePath;
+          batchRelPaths.push(file.relativePath);
           try {
-            await this.indexSingleFile(file.relativePath, file.absolutePath);
+            if (fs.existsSync(file.absolutePath)) {
+              const content = fs.readFileSync(file.absolutePath, 'utf8');
+              const fileChunks = chunkCodeFile(file.relativePath, file.absolutePath, content);
+              batchChunks.push(...fileChunks);
+            }
           } catch (fileErr) {
-            console.warn(`[code-search-mcp] Failed to index ${file.relativePath}:`, fileErr);
+            console.warn(`[code-search-mcp] Failed to read ${file.relativePath}:`, fileErr);
           }
-          processedInScan++;
-          this.status.indexedFiles = scan.unchangedFilesCount + processedInScan;
-          this.status.progressPercentage = Math.round(
-            ((scan.unchangedFilesCount + processedInScan) / scan.totalFilesCount) * 100
-          );
         }
+
+        if (batchChunks.length > 0) {
+          // Generate embeddings for all batch chunks in one vectorized ONNX pass
+          const texts = batchChunks.map((c) => c.content);
+          const vectors = await this.embeddings.embedBatch(texts, 64);
+          for (let j = 0; j < batchChunks.length; j++) {
+            batchChunks[j].vector = vectors[j];
+          }
+
+          // Single bulk write transaction for the entire batch
+          await this.store.deleteByFilePaths(batchRelPaths);
+          await this.store.insertChunks(batchChunks);
+        } else if (batchRelPaths.length > 0) {
+          await this.store.deleteByFilePaths(batchRelPaths);
+        }
+
+        processedInScan += batch.length;
+        this.status.indexedFiles = Math.min(scan.totalFilesCount, scan.unchangedFilesCount + processedInScan);
+        this.status.progressPercentage = Math.round(
+          (this.status.indexedFiles / scan.totalFilesCount) * 100
+        );
       }
 
       this.status.state = 'ready';

@@ -39,16 +39,27 @@ export class EmbeddingEngine {
     return Array.from(output.data);
   }
 
-  public async embedBatch(texts: string[], concurrency = 8): Promise<number[][]> {
-    const results: number[][] = new Array(texts.length);
-    for (let i = 0; i < texts.length; i += concurrency) {
-      const batch = texts.slice(i, i + concurrency);
-      const batchPromises = batch.map(async (text, batchIndex) => {
-        const vec = await this.embedText(text);
-        results[i + batchIndex] = vec;
+  public async embedBatch(texts: string[], batchSize = 32): Promise<number[][]> {
+    if (texts.length === 0) return [];
+    const extractor = await this.getExtractor();
+    const results: number[][] = [];
+    const dim = 384;
+
+    for (let i = 0; i < texts.length; i += batchSize) {
+      const batch = texts.slice(i, i + batchSize).map((t) =>
+        t.replace(/\r?\n/g, ' ').slice(0, 2048)
+      );
+      const output = await extractor(batch, {
+        pooling: 'mean',
+        normalize: true
       });
-      await Promise.all(batchPromises);
+
+      for (let j = 0; j < batch.length; j++) {
+        const slice = Array.from(output.data.slice(j * dim, (j + 1) * dim)) as number[];
+        results.push(slice);
+      }
     }
+
     return results;
   }
 }
