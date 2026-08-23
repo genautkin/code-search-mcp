@@ -294,9 +294,57 @@ Add to your `.cursor/mcp.json`:
 
 ---
 
+## 🤖 AI Agent Guide & Tool Reference
+
+If you are an AI assistant (Claude Code, Gemini CLI, Cursor, Antigravity, or Windsurf) reading this repository, here is your quick-start guide to using the MCP tools provided by `code-search-mcp`:
+
+### 🛠️ Available MCP Tools
+
+| Tool Name | Arguments | Description | When to Call |
+| :--- | :--- | :--- | :--- |
+| **`code_search`** | `query` *(required)*<br>`limit` *(optional, default 10)*<br>`pathFilter` *(optional string)*<br>`language` *(optional string)*<br>`codeOnly` *(optional boolean)* | Performs hybrid semantic + lexical search across indexed repository files. Returns line-numbered code chunks with similarity scores. | **FIRST CALL** whenever locating concepts, business logic, workflows, UI components, or features described in natural language (e.g. *"where is user authentication refreshed"*, *"shopping cart tax calculator"*). |
+| **`code_search_status`** | *(none)* | Returns current indexing progress (`READY`, `INDEXING`), percentage, total files, and chunk count in LanceDB. | Check before large searches if you suspect indexing is still in progress. |
+| **`code_search_reindex`** | `forceFull` *(optional boolean)* | Triggers a background re-index or complete database rebuild. | Call when the user explicitly requests a database rebuild or after massive branch merges. |
+| **`code_search_guide`** | *(none)* | Returns inline agent usage best practices and tips. | Call to self-discover best practices during tool invocation. |
+
 ---
 
-## 🤖 Teaching Your AI Agent to Use It Automatically (`CLAUDE.md` / `GEMINI.md` / `.cursorrules`)
+### 🧭 Tool Decision Matrix: When to Use Which Tool
+
+```
+                       ┌───────────────────────────────────────────────┐
+                       │ What are you looking for in the codebase?     │
+                       └───────────────────────┬───────────────────────┘
+                                               │
+           ┌───────────────────────────────────┼───────────────────────────────────┐
+           ▼                                   ▼                                   ▼
+┌─────────────────────────┐         ┌─────────────────────────┐         ┌─────────────────────────┐
+│ Concept / Feature /     │         │ Known Symbol / Callers  │         │ Exact Literal String /  │
+│ Business Logic Intent   │         │ & Blast Radius Analysis │         │ Error Code / CSS Class  │
+│ (Natural Language)      │         │ (Exact identifier)      │         │ (Exact text match)      │
+└──────────┬──────────────┘         └──────────┬──────────────┘         └──────────┬──────────────┘
+           ▼                                   ▼                                   ▼
+┌─────────────────────────┐         ┌─────────────────────────┐         ┌─────────────────────────┐
+│ 🔍 USE: code_search     │         │ 🌳 USE: codegraph       │         │ 🔎 USE: grep_search     │
+│ • "where is payment..." │         │ • codegraph_explore     │         │ • "ERR_INVALID_AUTH"    │
+│ • "tax calculation..."  │         │ • callers / callees     │         │ • ".btn-primary-blue"   │
+└─────────────────────────┘         └─────────────────────────┘         └─────────────────────────┘
+```
+
+---
+
+### 💡 Pro Tips for AI Agents
+
+1. **Use `codeOnly: true` for Pure Implementation Logic**:
+   If you want to find pure TypeScript/JavaScript calculation formulas and exclude markdown documentation or skill guides, always pass `codeOnly: true`.
+2. **Use `pathFilter` to Narrow Subsystems**:
+   If the user asks *"how does checkout work in the billing module?"*, pass `pathFilter: "src/billing"`.
+3. **Use Line Numbers for Direct Code Edits**:
+   Code snippets are returned with 1-indexed line numbers (`14: export function calculateTotal()`). You can pass these line ranges directly to `replace_file_content` or `view_file` without guesswork.
+4. **Typo Tolerant**:
+   Feel free to pass natural words directly — the engine automatically handles plurals (`stemming`) and typos (`Levenshtein correction`) in <1ms.
+
+---
 
 ## 🤝 The Ultimate AI Pair: Why You Should Install Both `code-search` & `codegraph`
 
