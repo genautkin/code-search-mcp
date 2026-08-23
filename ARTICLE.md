@@ -50,7 +50,7 @@ Traditional search looks for **exact letters and words**.
                   [ Map of Meaning ]
 
    ☕️ "morning drink discount"   📍 (Your Question)
-              │ (Close!)
+              │ (Close match!)
               ▼
    🏷 "calculateEarlyBirdReward" 📍 (Your Code)
    
@@ -126,7 +126,7 @@ So we built **`code-search-mcp`** — a standalone, cross-platform **Model Conte
 ## 🔍 How It Works Under the Hood
 
 ### 1. How does it know when to start indexing?
-When your AI assistant launches (e.g. when you start Claude Code or Gemini CLI), it connects to `code-search-mcp` over standard input/output (`stdio`).
+When your AI assistant launches (e.g. when you start Claude Code, Antigravity, or Gemini CLI), it connects to `code-search-mcp` over standard input/output (`stdio`).
 - The MCP server connects **immediately in <15ms**.
 - A background worker starts scanning the project files without blocking your chat session.
 
@@ -150,49 +150,63 @@ By default, the database is stored in:
 - **Zero Git noise**: No untracked folders or unwanted diffs ever appear in your repository.
 - *(If the project does not have `node_modules`, it cleanly falls back to `.code-search/`)*.
 
-### 4. How does it know which files to skip?
-`code-search-mcp` uses a **5-layer ignore engine**:
-1. **Built-in System Excludes**: Automatically skips binaries, images (`.png`, `.svg`), videos, audio, build outputs (`dist/`, `build/`), and lockfiles (`package-lock.json`).
-2. **`.gitignore`**: Reads and honors your project's `.gitignore` file.
-3. **`.ignore`**: Supports ripgrep-style ignore files.
-4. **`.codesearchignore`**: Optional file where you can add search-specific ignore rules.
-5. **File Size Limit**: Any file larger than 500 KB is automatically skipped to prevent indexing huge generated data blobs.
-
 ---
 
-## 🧪 How We Tested It
+## ⚙️ How to Manage Settings & Ignore More Files
 
-To ensure rock-solid stability, we built a comprehensive automated test suite with **21 unit and integration tests**:
+By default, `code-search-mcp` automatically ignores binaries (`.png`, `.mp4`, `.zip`), build outputs (`dist/`, `build/`), lockfiles, and any file over 500 KB, as well as honoring your existing **`.gitignore`**.
 
-```bash
-npm test
+If you want to customize settings or ignore extra files for your project, you have two simple options:
+
+### Option 1: Create a `.codesearchignore` File (Quick & Simple)
+Create a `.codesearchignore` file in your project root using standard gitignore syntax:
+
+```gitignore
+# Ignore mock data and test fixtures
+tests/fixtures/**
+src/mocks/**
+
+# Ignore auto-generated files
+src/models/*.generated.ts
+locales/**
 ```
 
-### What We Validated:
-1. **AST & Line Chunking**: Verified that large files are cleanly split into overlapping code chunks with exact line number tracking.
-2. **In-Process ONNX Embeddings**: Verified that local vector generation produces consistent embeddings across operating systems.
-3. **LanceDB Vector Search**: Tested cosine similarity search against stored code chunks.
-4. **Live In-Process Watcher**: Modified a test file and verified that the index updated automatically within 500ms without restarting.
-5. **Real-World Codebase Test**: Tested on a large enterprise repository with over **6,000 source files**, successfully indexing tens of thousands of chunks and retrieving complex business logic in under 50ms.
+### Option 2: Create a `.codesearchrc.json` File (Advanced Settings)
+Create a `.codesearchrc.json` file in your project root to control indexing behavior, batching, and file size limits:
+
+```json
+{
+  "maxFileSizeKb": 300,
+  "batchSize": 50,
+  "customExcludes": [
+    "legacy_vendor/**",
+    "docs/archive/**"
+  ],
+  "supportedExtensions": [
+    ".ts", ".tsx", ".js", ".vue", ".py", ".md", ".json"
+  ]
+}
+```
 
 ---
 
-## 📦 How to Install and Use It
+## 📦 How to Install the Tool
 
-You can add `code-search-mcp` to your favorite tool with one command:
+You can install `code-search-mcp` into any AI coding tool in seconds:
 
 ### 1. Claude Code
+Install globally across all projects with a single command:
 ```bash
 claude mcp add code-search -s user -- npx -y code-search-mcp
 ```
 
 ### 2. Antigravity CLI (`agy`)
-Run this one-liner in your terminal:
+Run this one-liner in your terminal to enable the plugin:
 ```bash
-mkdir -p ~/.gemini/config/plugins/code-search && cat << 'INNER' > ~/.gemini/config/plugins/code-search/plugin.json
+mkdir -p ~/.gemini/config/plugins/code-search && cat << 'EOF' > ~/.gemini/config/plugins/code-search/plugin.json
 { "name": "code-search" }
-INNER
-cat << 'INNER' > ~/.gemini/config/plugins/code-search/mcp_config.json
+EOF
+cat << 'EOF' > ~/.gemini/config/plugins/code-search/mcp_config.json
 {
   "mcpServers": {
     "code-search": {
@@ -201,10 +215,11 @@ cat << 'INNER' > ~/.gemini/config/plugins/code-search/mcp_config.json
     }
   }
 }
-INNER
+EOF
 ```
 
-### 3. Gemini CLI (`~/.gemini/settings.json`)
+### 3. Gemini CLI
+Add to your `~/.gemini/settings.json`:
 ```json
 {
   "mcpServers": {
@@ -217,7 +232,8 @@ INNER
 }
 ```
 
-### 4. Cursor / Claude Desktop (`.cursor/mcp.json`)
+### 4. Cursor / Claude Desktop
+Add to your `.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
