@@ -180,7 +180,12 @@ export class VectorStore {
   }
 
   public async clear(): Promise<void> {
-    const table = this.ensureTable();
-    await table.delete('id IS NOT NULL');
+    if (this.db) {
+      try {
+        await this.db.dropTable(TABLE_NAME);
+      } catch {}
+      this.table = null;
+      await this.init();
+    }
   }
 }
