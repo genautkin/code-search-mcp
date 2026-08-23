@@ -1,0 +1,57 @@
+{
+  "name": "code-search-mcp",
+  "version": "0.1.0",
+  "description": "Zero-daemon, cross-platform local semantic code search MCP server with real-time indexing progress and live file watching",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "code-search-mcp": "./dist/bin/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "tsup && chmod +x dist/bin/cli.js",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "semantic-search",
+    "code-search",
+    "vector-search",
+    "embeddings",
+    "lancedb",
+    "transformers",
+    "claude-code",
+    "gemini-cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "@lancedb/lancedb": "^0.13.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "apache-arrow": "^17.0.0",
+    "chokidar": "^4.0.3",
+    "commander": "^13.1.0",
+    "glob": "^11.1.0",
+    "ignore": "^7.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
