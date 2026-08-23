@@ -144,7 +144,16 @@ Results from currently indexed files:
 ### Match 1: src/drinks/espresso.ts (Lines 12-30) [Score: 54.2%]
 ```
 
-### 3. Where is the index stored?
+### 3. Be Patient on the First Run — It Only Runs Once! ⏳
+On massive repositories with 5,000+ files, the very first indexing scan takes a few minutes because the local AI model is generating vector embeddings for every single chunk of code on your machine for the first time.
+
+**The good news:**
+- **You only ever pay this cost once:** The resulting vector database is permanently stored in `node_modules/.cache/code-search/lancedb/`.
+- **Instant Subsequent Boot:** On every future session or editor restart, the server connects in **<15ms** without re-indexing.
+- **Incremental Live Updates:** As you write code during the day, the live watcher updates only the single file you changed in **~150ms** upon saving.
+- **Zero Waiting Required:** You can start asking questions and searching immediately — the assistant will search whatever is already indexed in the background.
+
+### 4. Where is the index stored?
 By default, the database is stored in:
 📁 `node_modules/.cache/code-search/lancedb/`
 
