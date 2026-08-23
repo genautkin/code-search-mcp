@@ -50,9 +50,38 @@ export class VectorStore {
     return this.table;
   }
 
+  private async retryOnConflict<T>(fn: (table: lancedb.Table) => Promise<T>, maxRetries = 5): Promise<T> {
+    let attempt = 0;
+    while (true) {
+      const table = this.ensureTable();
+      try {
+        return await fn(table);
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        const isConflict =
+          msg.includes('Commit conflict') ||
+          msg.includes('conflict') ||
+          msg.includes('Version mismatch') ||
+          msg.includes('version');
+
+        if (isConflict && attempt < maxRetries) {
+          attempt++;
+          const delay = 50 * Math.pow(2, attempt) + Math.floor(Math.random() * 50);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          if (this.db) {
+            try {
+              this.table = await this.db.openTable(TABLE_NAME);
+            } catch {}
+          }
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
   public async insertChunks(chunks: CodeChunk[]): Promise<void> {
     if (chunks.length === 0) return;
-    const table = this.ensureTable();
 
     const records = chunks.map((chunk) => ({
       id: chunk.id,
@@ -67,25 +96,22 @@ export class VectorStore {
       updatedAt: chunk.updatedAt || Date.now()
     }));
 
-    await table.add(records);
+    await this.retryOnConflict((table) => table.add(records));
   }
 
   public async deleteByFilePath(filePath: string): Promise<void> {
-    const table = this.ensureTable();
-    // Escape single quotes in file paths
     const escaped = filePath.replace(/'/g, "\\'");
-    await table.delete(`\`filePath\` = '${escaped}'`);
+    await this.retryOnConflict((table) => table.delete(`\`filePath\` = '${escaped}'`));
   }
 
   public async deleteByFilePaths(filePaths: string[]): Promise<void> {
     if (filePaths.length === 0) return;
-    const table = this.ensureTable();
     for (let i = 0; i < filePaths.length; i += 50) {
       const batch = filePaths.slice(i, i + 50);
       const condition = batch
         .map((fp) => `\`filePath\` = '${fp.replace(/'/g, "\\'")}'`)
         .join(' OR ');
-      await table.delete(condition);
+      await this.retryOnConflict((table) => table.delete(condition));
     }
   }
 
