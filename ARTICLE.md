@@ -1,6 +1,9 @@
-# How We Built a Zero-Daemon Semantic Code Search for AI Coding Agents
+# 🔍 code-search-mcp
 
-*Stop grepping for exact words. Give your AI coding assistant the power to search your codebase by meaning.*
+> **Zero-daemon local semantic code search MCP server powered by LanceDB and in-process ONNX embeddings.**  
+> *Stop grepping for exact words. Give your AI coding assistant the power to search your codebase by meaning.*
+
+Works out-of-the-box with **Claude Code**, **Gemini CLI**, **Antigravity (`agy`)**, and **Cursor** on macOS, Windows, and Linux.
 
 ---
 
@@ -192,7 +195,7 @@ Create a `.codesearchrc.json` file in your project root to control indexing beha
 
 ## 📦 How to Install the Tool
 
-You can install and run the main tool in two ways:
+You can install and run the main tool in two simple steps:
 
 ### Step 1: Choose Your Installation Method
 
@@ -205,8 +208,10 @@ If you prefer having the binary cached locally for instant startup:
 npm install -g code-search-mcp
 ```
 
-#### Method C: From Source (For Contributors & Local Dev)
+#### Method C: From GitHub / Source (For Contributors)
 ```bash
+npm install -g git+https://github.com/your-username/code-search-mcp.git
+# or
 git clone https://github.com/your-username/code-search-mcp.git
 cd code-search-mcp
 npm install
@@ -268,6 +273,52 @@ Add to your `.cursor/mcp.json`:
   }
 }
 ```
+
+---
+
+## 🧪 How to Verify It Is Working
+
+Once installed, you can verify that `code-search-mcp` is working with three quick checks:
+
+### Check 1: Ask Your AI Assistant for Status
+In any chat session with Claude Code, Cursor, or Gemini CLI, ask:
+> *"Check `code_search_status`"*
+
+**Expected Output:**
+```text
+Index Status: READY (or INDEXING)
+Progress: 100%
+Files: 6,070 / 6,070 indexed
+Chunks: 8,204 code chunks in LanceDB
+```
+
+### Check 2: Try a Natural Language Code Search
+Ask your AI assistant:
+> *"Use `code_search` to find how customer discount rules or rewards are handled"*
+
+**Expected Output:**
+```text
+### Match 1: src/rewards/early-bird.ts (Lines 1-18) [Score: 56.4%]
+```
+The assistant returns relevant code snippets with exact line numbers and similarity scores instantly.
+
+### Check 3: Test Live File Watching
+1. Create a new test file in your project (e.g. `src/drinks/secret-recipe.ts`) with a unique comment:
+   ```typescript
+   // Caramel macchiato secret syrup blend formula
+   export const caramelBlend = 42;
+   ```
+2. Save the file.
+3. Immediately ask your AI assistant:
+   > *"Search for secret syrup blend formula using `code_search`"*
+4. The new file will be found and returned in **under 1 second** — no manual rebuilds or restart needed!
+
+### Check 4: Run the Automated Test Suite (Optional)
+If developing from source, run:
+```bash
+npm test
+```
+All **21 unit & integration tests** will execute and pass, verifying the MCP protocol handshake, ONNX vector generation, LanceDB storage, and watcher lifecycle.
 
 ---
 
