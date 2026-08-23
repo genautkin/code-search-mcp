@@ -16,23 +16,43 @@
 
 ---
 
-## 📦 Quick Start / Installation
+---
+
+## 📦 Quick Start / Easy Installation
+
+`code-search-mcp` can be installed in seconds into any AI coding assistant with zero background daemons.
 
 ### 1. Claude Code
-Add as a user MCP server (available across all your projects):
-
+Install globally across all projects with a single command:
 ```bash
 claude mcp add code-search -s user -- npx -y code-search-mcp
 ```
+*(Or for local development before npm publish: `claude mcp add code-search -s user -- /path/to/code-search-mcp/dist/bin/cli.js`)*
 
-Or for a specific project directory:
+---
+
+### 2. Antigravity CLI (`agy`)
+
+#### Option A: Quick One-Liner (Recommended)
+Run this command in your terminal to automatically register the plugin:
 ```bash
-claude mcp add code-search -- npx -y code-search-mcp --path /path/to/project
+mkdir -p ~/.gemini/config/plugins/code-search && cat << 'EOF' > ~/.gemini/config/plugins/code-search/plugin.json
+{ "name": "code-search" }
+EOF
+cat << 'EOF' > ~/.gemini/config/plugins/code-search/mcp_config.json
+{
+  "mcpServers": {
+    "code-search": {
+      "command": "npx",
+      "args": ["-y", "code-search-mcp"]
+    }
+  }
+}
+EOF
 ```
 
-### 2. Gemini CLI
-Add to `~/.gemini/settings.json`:
-
+#### Option B: Via `~/.gemini/config/mcp_config.json`
+Add the server entry to `~/.gemini/config/mcp_config.json`:
 ```json
 {
   "mcpServers": {
@@ -44,7 +64,26 @@ Add to `~/.gemini/settings.json`:
 }
 ```
 
-### 3. Cursor / Claude Desktop / Custom MCP Clients
+---
+
+### 3. Gemini CLI
+Add to your global `~/.gemini/settings.json` (or workspace `.gemini/settings.json`):
+```json
+{
+  "mcpServers": {
+    "code-search": {
+      "command": "npx",
+      "args": ["-y", "code-search-mcp"],
+      "trust": true
+    }
+  }
+}
+```
+
+---
+
+### 4. Cursor / Claude Desktop / Custom MCP Clients
+Add to your project's `.cursor/mcp.json` or client configuration:
 ```json
 {
   "mcpServers": {
