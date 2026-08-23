@@ -213,42 +213,50 @@ Create a `.codesearchrc.json` file in your project root to control indexing beha
 
 ## 📦 How to Install the Tool
 
-You can install and run the main tool in two simple steps:
+You can install and run the tool using any of the following methods:
 
 ### Step 1: Choose Your Installation Method
 
-#### Method A: Zero-Install via `npx` (Recommended)
-You don't even need to pre-install the package! Any AI client can execute it on-demand via `npx -y code-search-mcp`.
-
-#### Method B: Global Install (Fastest boot)
-If you prefer having the binary cached locally for instant startup:
+#### Method A: Direct from GitHub via `npx` (Zero-Install — No npm publish needed!)
+Any AI client can run it on-demand directly from your GitHub repository:
 ```bash
+npx -y github:your-username/code-search-mcp
+```
+*(Node automatically downloads the repo, builds the bundle, and executes the MCP server).*
+
+#### Method B: From NPM Registry (Once Published)
+If you published the package to npm:
+```bash
+npx -y code-search-mcp
+# or global install:
 npm install -g code-search-mcp
 ```
 
-#### Method C: From GitHub / Source (For Contributors)
+#### Method C: Local Development / Linked (Fastest Local Startup)
+If running directly from your local source directory:
 ```bash
-npm install -g git+https://github.com/your-username/code-search-mcp.git
-# or
-git clone https://github.com/your-username/code-search-mcp.git
-cd code-search-mcp
+cd /path/to/code-search-mcp
 npm install
 npm run build
 npm link
 ```
+Now `code-search-mcp` is registered as a global command on your system!
 
 ---
 
 ### Step 2: Connect It to Your AI Client
 
 #### 1. Claude Code
-Run this single command in your terminal:
 ```bash
-claude mcp add code-search -s user -- npx -y code-search-mcp
+# If running via GitHub:
+claude mcp add code-search -s user -- npx -y github:your-username/code-search-mcp
+
+# If running locally (linked):
+claude mcp add code-search -s user -- code-search-mcp
 ```
 
 #### 2. Antigravity CLI (`agy`)
-Run this one-liner in your terminal to enable the plugin:
+Run this one-liner in your terminal:
 ```bash
 mkdir -p ~/.gemini/config/plugins/code-search && cat << 'EOF' > ~/.gemini/config/plugins/code-search/plugin.json
 { "name": "code-search" }
@@ -258,7 +266,7 @@ cat << 'EOF' > ~/.gemini/config/plugins/code-search/mcp_config.json
   "mcpServers": {
     "code-search": {
       "command": "npx",
-      "args": ["-y", "code-search-mcp"]
+      "args": ["-y", "github:your-username/code-search-mcp"]
     }
   }
 }
@@ -272,7 +280,7 @@ Add to your `~/.gemini/settings.json`:
   "mcpServers": {
     "code-search": {
       "command": "npx",
-      "args": ["-y", "code-search-mcp"],
+      "args": ["-y", "github:your-username/code-search-mcp"],
       "trust": true
     }
   }
@@ -286,7 +294,7 @@ Add to your `.cursor/mcp.json`:
   "mcpServers": {
     "code-search": {
       "command": "npx",
-      "args": ["-y", "code-search-mcp", "--path", "${workspaceFolder}"]
+      "args": ["-y", "github:your-username/code-search-mcp", "--path", "${workspaceFolder}"]
     }
   }
 }

@@ -22,7 +22,7 @@ cat << 'INNER' > ~/.gemini/config/plugins/code-search/mcp_config.json
   "mcpServers": {
     "code-search": {
       "command": "npx",
-      "args": ["-y", "code-search-mcp"]
+      "args": ["-y", "github:your-username/code-search-mcp"]
     }
   }
 }
@@ -38,7 +38,7 @@ Create `~/.gemini/config/plugins/code-search/` containing:
     "mcpServers": {
       "code-search": {
         "command": "npx",
-        "args": ["-y", "code-search-mcp"]
+        "args": ["-y", "github:your-username/code-search-mcp"]
       }
     }
   }
@@ -55,7 +55,7 @@ Add to your global `~/.gemini/settings.json` (or workspace `.gemini/settings.jso
   "mcpServers": {
     "code-search": {
       "command": "npx",
-      "args": ["-y", "code-search-mcp"],
+      "args": ["-y", "github:your-username/code-search-mcp"],
       "trust": true
     }
   }
@@ -68,12 +68,12 @@ Add to your global `~/.gemini/settings.json` (or workspace `.gemini/settings.jso
 
 #### Global User Install (Available across all projects):
 ```bash
-claude mcp add code-search -s user -- npx -y code-search-mcp
+claude mcp add code-search -s user -- npx -y github:your-username/code-search-mcp
 ```
 
 #### Single Project Install:
 ```bash
-claude mcp add code-search -- npx -y code-search-mcp --path /path/to/your/project
+claude mcp add code-search -- npx -y github:your-username/code-search-mcp --path /path/to/your/project
 ```
 
 ---
@@ -87,7 +87,7 @@ Add to `.cursor/mcp.json` or `claude_desktop_config.json`:
   "mcpServers": {
     "code-search": {
       "command": "npx",
-      "args": ["-y", "code-search-mcp", "--path", "${workspaceFolder}"]
+      "args": ["-y", "github:your-username/code-search-mcp", "--path", "${workspaceFolder}"]
     }
   }
 }
