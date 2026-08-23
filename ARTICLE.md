@@ -192,15 +192,39 @@ Create a `.codesearchrc.json` file in your project root to control indexing beha
 
 ## 📦 How to Install the Tool
 
-You can install `code-search-mcp` into any AI coding tool in seconds:
+You can install and run the main tool in two ways:
 
-### 1. Claude Code
-Install globally across all projects with a single command:
+### Step 1: Choose Your Installation Method
+
+#### Method A: Zero-Install via `npx` (Recommended)
+You don't even need to pre-install the package! Any AI client can execute it on-demand via `npx -y code-search-mcp`.
+
+#### Method B: Global Install (Fastest boot)
+If you prefer having the binary cached locally for instant startup:
+```bash
+npm install -g code-search-mcp
+```
+
+#### Method C: From Source (For Contributors & Local Dev)
+```bash
+git clone https://github.com/your-username/code-search-mcp.git
+cd code-search-mcp
+npm install
+npm run build
+npm link
+```
+
+---
+
+### Step 2: Connect It to Your AI Client
+
+#### 1. Claude Code
+Run this single command in your terminal:
 ```bash
 claude mcp add code-search -s user -- npx -y code-search-mcp
 ```
 
-### 2. Antigravity CLI (`agy`)
+#### 2. Antigravity CLI (`agy`)
 Run this one-liner in your terminal to enable the plugin:
 ```bash
 mkdir -p ~/.gemini/config/plugins/code-search && cat << 'EOF' > ~/.gemini/config/plugins/code-search/plugin.json
@@ -218,7 +242,7 @@ cat << 'EOF' > ~/.gemini/config/plugins/code-search/mcp_config.json
 EOF
 ```
 
-### 3. Gemini CLI
+#### 3. Gemini CLI
 Add to your `~/.gemini/settings.json`:
 ```json
 {
@@ -232,7 +256,7 @@ Add to your `~/.gemini/settings.json`:
 }
 ```
 
-### 4. Cursor / Claude Desktop
+#### 4. Cursor / Claude Desktop
 Add to your `.cursor/mcp.json`:
 ```json
 {
