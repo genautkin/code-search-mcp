@@ -33,7 +33,14 @@ export class IndexerWorker {
   public async init(): Promise<void> {
     await this.store.init();
     const count = await this.store.count();
+    const stats = await this.store.getIndexedFileStats();
     this.status.indexedChunks = count;
+    this.status.indexedFiles = stats.size;
+    this.status.totalFiles = stats.size;
+    if (stats.size > 0) {
+      this.status.state = 'ready';
+      this.status.progressPercentage = 100;
+    }
   }
 
   public getStatus(): IndexStatus {
@@ -47,8 +54,12 @@ export class IndexerWorker {
 
     if (!this.lock.acquire()) {
       const count = await this.store.count();
+      const stats = await this.store.getIndexedFileStats();
       this.status.indexedChunks = count;
+      this.status.indexedFiles = stats.size;
+      this.status.totalFiles = stats.size;
       this.status.state = 'ready';
+      this.status.progressPercentage = stats.size > 0 ? 100 : 0;
       return;
     }
 
