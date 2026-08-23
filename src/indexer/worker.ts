@@ -4,7 +4,7 @@ import { CodeChunk, CodeSearchConfig, IndexStatus, SearchResult } from '../types
 import { VectorStore } from '../store/lancedb.js';
 import { EmbeddingEngine } from '../embeddings/engine.js';
 import { scanDirectory } from './scanner.js';
-import { chunkCodeFile, normalizePath } from './chunker.js';
+import { chunkCodeFile, formatChunkForEmbedding, normalizePath } from './chunker.js';
 
 import { ProcessLock } from './lock.js';
 
@@ -120,8 +120,8 @@ export class IndexerWorker {
         }
 
         if (batchChunks.length > 0) {
-          // Generate embeddings for all batch chunks in one vectorized ONNX pass
-          const texts = batchChunks.map((c) => c.content);
+          // Generate embeddings with contextual breadcrumbs in one vectorized ONNX pass
+          const texts = batchChunks.map((c) => formatChunkForEmbedding(c));
           const vectors = await this.embeddings.embedBatch(texts, 64);
           for (let j = 0; j < batchChunks.length; j++) {
             batchChunks[j].vector = vectors[j];
@@ -173,8 +173,8 @@ export class IndexerWorker {
       return;
     }
 
-    // Generate embeddings for all chunks in the file
-    const texts = chunks.map((c) => c.content);
+    // Generate embeddings with contextual breadcrumbs
+    const texts = chunks.map((c) => formatChunkForEmbedding(c));
     const vectors = await this.embeddings.embedBatch(texts);
 
     for (let i = 0; i < chunks.length; i++) {
@@ -197,7 +197,7 @@ export class IndexerWorker {
     formattedOutput: string;
   }> {
     const queryVector = await this.embeddings.embedText(queryText);
-    const results = await this.store.search(queryVector, limit);
+    const results = await this.store.search(queryVector, limit, queryText);
     const status = this.getStatus();
 
     let output = '';

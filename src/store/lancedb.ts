@@ -115,7 +115,7 @@ export class VectorStore {
     }
   }
 
-  public async search(queryVector: number[], limit: number = 10): Promise<SearchResult[]> {
+  public async searchVector(queryVector: number[], limit: number = 10): Promise<SearchResult[]> {
     const table = this.ensureTable();
     const rowCount = await table.countRows();
     if (rowCount === 0) {
@@ -147,6 +147,135 @@ export class VectorStore {
       console.error('[code-search-mcp] Error searching LanceDB:', err);
       return [];
     }
+  }
+
+  public async searchLexical(queryText: string, limit: number = 30): Promise<SearchResult[]> {
+    const table = this.ensureTable();
+    const rowCount = await table.countRows();
+    if (rowCount === 0) {
+      return [];
+    }
+
+    const stopWords = new Set(['the', 'and', 'for', 'with', 'where', 'how', 'what', 'this', 'that', 'from', 'code', 'file']);
+    const rawTokens = queryText
+      .split(/[\s,;:!?()[\]{}<>"]+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 2 && !stopWords.has(t.toLowerCase()));
+
+    if (rawTokens.length === 0) {
+      return [];
+    }
+
+    const tokens = rawTokens.slice(0, 5);
+    const filterClauses = tokens.map((token) => {
+      const escaped = token.replace(/'/g, "''").replace(/\\/g, '\\\\');
+      return `\`content\` LIKE '%${escaped}%' OR \`filePath\` LIKE '%${escaped}%'`;
+    });
+
+    try {
+      const whereClause = filterClauses.join(' OR ');
+      const records = await table.query().where(whereClause).limit(limit).toArray();
+
+      return records
+        .map((record: any) => {
+          let matchCount = 0;
+          const lowerContent = (record.content || '').toLowerCase();
+          const lowerPath = (record.filePath || '').toLowerCase();
+
+          for (const token of tokens) {
+            const t = token.toLowerCase();
+            if (lowerPath.includes(t)) matchCount += 3;
+            let pos = 0;
+            while ((pos = lowerContent.indexOf(t, pos)) !== -1) {
+              matchCount += 1;
+              pos += t.length;
+              if (matchCount >= 20) break;
+            }
+          }
+
+          const score = Math.min(1, matchCount * 0.1);
+          return {
+            filePath: record.filePath,
+            startLine: record.startLine,
+            endLine: record.endLine,
+            content: record.content,
+            score: Number(score.toFixed(4)),
+            language: record.language
+          };
+        })
+        .sort((a, b) => b.score - a.score);
+    } catch (err) {
+      console.warn('[code-search-mcp] Lexical search warning:', err);
+      return [];
+    }
+  }
+
+  public async searchHybrid(queryVector: number[], queryText: string, limit: number = 10): Promise<SearchResult[]> {
+    const candidateLimit = Math.max(limit * 3, 30);
+    const [vectorHits, lexicalHits] = await Promise.all([
+      this.searchVector(queryVector, candidateLimit),
+      this.searchLexical(queryText, candidateLimit)
+    ]);
+
+    if (lexicalHits.length === 0) {
+      return vectorHits.slice(0, limit);
+    }
+
+    if (vectorHits.length === 0) {
+      return lexicalHits.slice(0, limit);
+    }
+
+    const rrfMap = new Map<string, { result: SearchResult; rrfScore: number; vectorScore: number }>();
+    const RRF_K = 60;
+
+    for (let i = 0; i < vectorHits.length; i++) {
+      const hit = vectorHits[i];
+      const key = `${hit.filePath}:${hit.startLine}:${hit.endLine}`;
+      const rrf = 1.0 / (RRF_K + (i + 1));
+      rrfMap.set(key, {
+        result: hit,
+        rrfScore: rrf,
+        vectorScore: hit.score
+      });
+    }
+
+    for (let j = 0; j < lexicalHits.length; j++) {
+      const hit = lexicalHits[j];
+      const key = `${hit.filePath}:${hit.startLine}:${hit.endLine}`;
+      const rrf = 1.2 / (RRF_K + (j + 1));
+      const existing = rrfMap.get(key);
+      if (existing) {
+        existing.rrfScore += rrf;
+      } else {
+        rrfMap.set(key, {
+          result: hit,
+          rrfScore: rrf,
+          vectorScore: hit.score * 0.7
+        });
+      }
+    }
+
+    const fused = Array.from(rrfMap.values())
+      .sort((a, b) => b.rrfScore - a.rrfScore)
+      .slice(0, limit);
+
+    if (fused.length === 0) return [];
+
+    const maxRrf = fused[0].rrfScore;
+    return fused.map(({ result, rrfScore, vectorScore }) => {
+      const blendedScore = Math.max(vectorScore, Math.min(0.95, (rrfScore / maxRrf) * 0.85));
+      return {
+        ...result,
+        score: Number(blendedScore.toFixed(4))
+      };
+    });
+  }
+
+  public async search(queryVector: number[], limit: number = 10, queryText?: string): Promise<SearchResult[]> {
+    if (queryText) {
+      return this.searchHybrid(queryVector, queryText, limit);
+    }
+    return this.searchVector(queryVector, limit);
   }
 
   public async count(): Promise<number> {

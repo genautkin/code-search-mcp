@@ -81,4 +81,47 @@ describe('LanceDB Vector Store', () => {
     await store.deleteByFilePath('src/to-delete.ts');
     expect(await store.count()).toBe(0);
   });
+
+  it('should perform lexical search and hybrid fusion for exact code identifiers', async () => {
+    const vectorA = new Array(384).fill(0.2);
+    const vectorB = new Array(384).fill(0.8);
+
+    const chunkA: CodeChunk = {
+      id: 'src/ciq/marker.js:105:150',
+      filePath: 'src/ciq/marker.js',
+      absolutePath: '/repo/src/ciq/marker.js',
+      startLine: 105,
+      endLine: 150,
+      content: 'CIQ.Marker = function(params) { this.xPositioner = params.xPositioner; };',
+      contentHash: 'hash_marker',
+      vector: vectorA,
+      language: 'javascript',
+      updatedAt: Date.now()
+    };
+
+    const chunkB: CodeChunk = {
+      id: 'src/general/helper.js:1:20',
+      filePath: 'src/general/helper.js',
+      absolutePath: '/repo/src/general/helper.js',
+      startLine: 1,
+      endLine: 20,
+      content: 'function formatGeneralText() { return true; }',
+      contentHash: 'hash_gen',
+      vector: vectorB,
+      language: 'javascript',
+      updatedAt: Date.now()
+    };
+
+    await store.insertChunks([chunkA, chunkB]);
+
+    // Exact lexical search
+    const lexicalHits = await store.searchLexical('CIQ.Marker', 5);
+    expect(lexicalHits.length).toBeGreaterThan(0);
+    expect(lexicalHits[0].filePath).toBe('src/ciq/marker.js');
+
+    // Hybrid search fusing query text + vector
+    const hybridHits = await store.search(vectorB, 5, 'CIQ.Marker xPositioner');
+    expect(hybridHits.length).toBeGreaterThan(0);
+    expect(hybridHits[0].filePath).toBe('src/ciq/marker.js');
+  });
 });

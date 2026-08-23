@@ -58,6 +58,22 @@ export function detectLanguage(filePath: string): string {
   }
 }
 
+/**
+ * Formats a code chunk with contextual metadata (file path, line numbers, language)
+ * to maximize semantic vector embedding relevance across large repositories.
+ */
+export function formatChunkForEmbedding(chunk: {
+  filePath: string;
+  startLine: number;
+  endLine: number;
+  language?: string;
+  content: string;
+}): string {
+  const lang = chunk.language || detectLanguage(chunk.filePath);
+  const header = `// File: ${chunk.filePath} [L${chunk.startLine}-L${chunk.endLine}] (${lang})`;
+  return `${header}\n${chunk.content}`;
+}
+
 export function chunkCodeFile(
   relativePath: string,
   absolutePath: string,
@@ -104,7 +120,21 @@ export function chunkCodeFile(
   let currentStart = 0; // 0-indexed
 
   while (currentStart < totalLines) {
-    const currentEnd = Math.min(currentStart + maxLines, totalLines);
+    let currentEnd = Math.min(currentStart + maxLines, totalLines);
+
+    // Snap to a natural boundary (empty line, function closure, declaration) if not at EOF
+    if (currentEnd < totalLines) {
+      const searchWindowStart = Math.max(currentStart + (maxLines - 10), currentStart + 15);
+      for (let lineIdx = currentEnd - 1; lineIdx >= searchWindowStart; lineIdx--) {
+        const line = rawLines[lineIdx].trim();
+        if (line === '' || line === '}' || line === '};' || line.startsWith('export ') || line.startsWith('function ') || line.startsWith('/**')) {
+          // If closing brace or empty line, include it in the current chunk
+          currentEnd = lineIdx + (line === '' || line === '}' || line === '};' ? 1 : 0);
+          break;
+        }
+      }
+    }
+
     const chunkLines = rawLines.slice(currentStart, currentEnd);
     const chunkContent = chunkLines.join('\n');
 
@@ -127,7 +157,9 @@ export function chunkCodeFile(
       break;
     }
 
-    currentStart += maxLines - overlap;
+    // Advance start position
+    const advance = Math.max(1, (currentEnd - currentStart) - overlap);
+    currentStart += advance;
   }
 
   return chunks;

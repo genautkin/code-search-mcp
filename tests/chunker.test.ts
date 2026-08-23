@@ -38,4 +38,18 @@ describe('Smart Code Chunker', () => {
     const chunks = chunkCodeFile('src\\windows\\path.ts', 'C:\\repo\\src\\windows\\path.ts', code);
     expect(chunks[0].filePath).toBe('src/windows/path.ts');
   });
+
+  it('should format chunks with contextual breadcrumbs for embeddings', async () => {
+    const { formatChunkForEmbedding } = await import('../src/indexer/chunker.js');
+    const header = formatChunkForEmbedding({
+      filePath: 'src/Charts/CIQ.Marker.js',
+      startLine: 105,
+      endLine: 150,
+      language: 'javascript',
+      content: 'CIQ.Marker = function() {};'
+    });
+
+    expect(header).toContain('// File: src/Charts/CIQ.Marker.js [L105-L150] (javascript)');
+    expect(header).toContain('CIQ.Marker = function() {};');
+  });
 });
