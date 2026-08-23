@@ -104,7 +104,14 @@ export function loadConfig(projectRoot: string): CodeSearchConfig {
     }
   }
 
-  const dbPath = path.join(canonicalRoot, '.code-search', 'lancedb');
+  // Prefer node_modules/.cache/code-search/lancedb if node_modules exists (standard cache directory, zero git noise)
+  let dbPath: string;
+  const nodeModulesPath = path.join(canonicalRoot, 'node_modules');
+  if (fs.existsSync(nodeModulesPath)) {
+    dbPath = path.join(nodeModulesPath, '.cache', 'code-search', 'lancedb');
+  } else {
+    dbPath = path.join(canonicalRoot, '.code-search', 'lancedb');
+  }
 
   return {
     projectRoot: canonicalRoot,

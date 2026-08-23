@@ -53,4 +53,15 @@ describe('Config Loader & Ignore Engine', () => {
     expect(config.batchSize).toBe(100);
     expect(config.customExcludes).toContain('custom_ignore/**');
   });
+
+  it('should store database in node_modules/.cache/code-search when node_modules is present', () => {
+    fs.mkdirSync(path.join(tempDir, 'node_modules'));
+    const config = loadConfig(tempDir);
+    expect(config.dbPath).toBe(path.join(tempDir, 'node_modules', '.cache', 'code-search', 'lancedb'));
+  });
+
+  it('should fallback to .code-search/lancedb when node_modules is absent', () => {
+    const config = loadConfig(tempDir);
+    expect(config.dbPath).toBe(path.join(tempDir, '.code-search', 'lancedb'));
+  });
 });
