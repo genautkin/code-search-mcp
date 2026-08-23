@@ -298,13 +298,75 @@ Add to your `.cursor/mcp.json`:
 
 ## 🤖 Teaching Your AI Agent to Use It Automatically (`CLAUDE.md` / `GEMINI.md` / `.cursorrules`)
 
-To ensure your AI assistant picks `code_search` automatically instead of falling back to dumb keyword grep whenever you open a new session, add this rule to your project's instruction file (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, or `.cursorrules`):
+## 🤝 The Ultimate AI Pair: Why You Should Install Both `code-search` & `codegraph`
+
+Modern AI coding assistants perform best when equipped with two complementary tools: **Semantic Search** (`code-search-mcp`) and **AST Code Graphs** (`codegraph`).
+
+```
+                   ┌─────────────────────────────────────────────────────────┐
+                   │  User: "Where is margin calculation handled?"          │
+                   └────────────────────────────┬────────────────────────────┘
+                                                │
+                                                ▼
+                   ┌─────────────────────────────────────────────────────────┐
+                   │ 1. SEMANTIC SEARCH (code_search)                        │
+                   │ • Understands intent, concepts, and natural language     │
+                   │ • Finds: margin-reduction-cfd.engine.ts (via JSDoc)     │
+                   └────────────────────────────┬────────────────────────────┘
+                                                │
+                                                ▼
+                   ┌─────────────────────────────────────────────────────────┐
+                   │ 2. AST CODE GRAPH (codegraph_explore)                   │
+                   │ • Understands syntax trees, callers, and blast radius   │
+                   │ • Traces: callers into legacy GlobalBuySellData.js       │
+                   │ • Discovers: unit test suites (margin-reduction.spec.ts)│
+                   └─────────────────────────────────────────────────────────┘
+```
+
+### Why One Tool Alone Isn't Enough:
+
+| Tool | Primary Job | What It Does Best | Where It Struggles |
+| :--- | :--- | :--- | :--- |
+| **`code-search`** *(Semantic Vector)* | **Concept & Intent Discovery** | Finding business logic, features, components, and architectural docs described in plain English. | Traversal across dynamic call hierarchies and legacy unannotated files. |
+| **`codegraph`** *(AST Symbol Graph)* | **Structural Navigation & Blast Radius** | Tracing verbatim symbol definitions, callers, callees, and covering unit tests in 1 jump. | Finding concepts described in natural language without knowing symbol names. |
+
+### Real-World Case Study: Modern Engine vs Legacy Monolith
+
+In a real enterprise codebase:
+1. **The Modern Engine (`margin-reduction.engine.ts`)** has explicit names (`calculateInitialMarginNeeded`) and rich JSDoc explanations. `code_search` finds it with a **>55% similarity match** in milliseconds.
+2. **The Legacy Core (`GlobalBuySellData.js`)** is a 2,000-line file using old terms (`getFundsNeeded`, `SecurityRequired`) or typos (`marginPrecentage`). Semantic search alone might score it lower.
+3. **The Synergy**: Once `code_search` lands on `margin-reduction.engine.ts`, `codegraph_explore` immediately traces every caller directly into `GlobalBuySellData.js` and maps the blast radius across covering unit tests without guessing!
+
+### Recommended Dual Configuration
+
+Add both tools to your MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "code-search": {
+      "command": "node",
+      "args": ["/path/to/code-search-mcp/dist/bin/cli.js"]
+    },
+    "codegraph": {
+      "command": "codegraph",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+---
+
+## 📋 Recommended Assistant Rules
+
+To ensure your AI assistant picks `code_search` and `codegraph` automatically, add this rule to your project's instruction file (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, or `.cursorrules`):
 
 ```markdown
-## Code Discovery & Semantic Search Rules
-- **Rule:** When looking for features, domain logic, components, or concepts described in natural language (e.g., "how are discounts applied", "where is user session initialized", "loyalty points logic"), **ALWAYS call `code_search` FIRST**.
-- **Why:** `code_search` performs semantic vector search across code comments, markdown specs, and source files to pinpoint relevant files instantly without requiring exact keyword matches.
-- **Fallback:** Only fall back to manual grep or directory scanning if semantic search yields no matches.
+## Code Navigation & Search
+
+1. **CodeGraph (`codegraph_explore`)**: Call FIRST when exploring known symbols, tracking call paths, finding usages, or analyzing blast radius (callers + covering tests).
+2. **Semantic Search (`code_search`)**: Call FIRST when looking for features, domain behaviors, or business logic described in natural language (e.g. "where is margin calculated", "deposit suggestions formatted").
 ```
 
 ---
