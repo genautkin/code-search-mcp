@@ -3,7 +3,6 @@ node_modules/
 .pnpm-store/
 
 # Build & compilation outputs
-dist/
 *.tsbuildinfo
 
 # Caches and search databases
