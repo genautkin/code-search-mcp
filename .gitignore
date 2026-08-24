@@ -40,6 +40,8 @@ pnpm-debug.log*
 .claude/
 .gemini/
 .agents/
+.superpowers/
+docs/superpowers/
 
 # Operating System files
 .DS_Store
