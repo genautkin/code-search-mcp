@@ -211,51 +211,50 @@ Create a `.codesearchrc.json` file in your project root to control indexing beha
 
 ---
 
-## 📦 How to Install the Tool
+## 📦 How to Install & Configure
 
-You can install and run the tool using any of the following methods:
+We recommend installing the binary directly to ensure **clean process termination** without wrapper overhead (`npx`/`npm exec` wrappers can cause orphaned background processes).
 
-### Step 1: Choose Your Installation Method
+### Step 1: Install the Server
 
-#### Method A: Direct from GitHub via `npx` (Zero-Install — No npm publish needed!)
-Any AI client can run it on-demand directly from your GitHub repository:
+#### Method A: Direct from GitHub (Recommended — No NPM Publish Needed!)
+Install globally straight from the GitHub repo with a single command:
 ```bash
-npx -y github:your-username/code-search-mcp
+npm install -g github:genautkin/code-search-mcp
 ```
-*(Node automatically downloads the repo, builds the bundle, and executes the MCP server).*
+*(Whenever a new version is pushed, simply rerun this command to upgrade).*
 
-#### Method B: From NPM Registry (Once Published)
-If you published the package to npm:
-```bash
-npx -y code-search-mcp
-# or global install:
-npm install -g code-search-mcp
-```
-
-#### Method C: Local Development / Linked (Fastest Local Startup)
-If running directly from your local source directory:
+#### Method B: Local Development / Linked (For Contributors)
+If working directly from a cloned local repository:
 ```bash
 cd /path/to/code-search-mcp
 npm install
 npm run build
 npm link
 ```
-Now `code-search-mcp` is registered as a global command on your system!
+
+#### Method C: On-Demand Zero-Install via `npx`
+If you prefer running without global installation:
+```bash
+npx -y github:genautkin/code-search-mcp
+```
 
 ---
 
 ### Step 2: Connect It to Your AI Client
 
-#### 1. Claude Code
-```bash
-# If running via GitHub:
-claude mcp add code-search -s user -- npx -y github:your-username/code-search-mcp
+Because `code-search-mcp` is installed as a direct binary, configure your AI host to invoke it directly:
 
-# If running locally (linked):
+#### 1. 🧠 Claude Code
+```bash
+# Global User Install (Available in all projects):
 claude mcp add code-search -s user -- code-search-mcp
+
+# Single Project Install:
+claude mcp add code-search -- code-search-mcp --path /path/to/your/project
 ```
 
-#### 2. Antigravity CLI (`agy`)
+#### 2. 🤖 Antigravity CLI (`agy`)
 Run this one-liner in your terminal:
 ```bash
 mkdir -p ~/.gemini/config/plugins/code-search && cat << 'EOF' > ~/.gemini/config/plugins/code-search/plugin.json
@@ -265,40 +264,43 @@ cat << 'EOF' > ~/.gemini/config/plugins/code-search/mcp_config.json
 {
   "mcpServers": {
     "code-search": {
-      "command": "npx",
-      "args": ["-y", "github:your-username/code-search-mcp"]
+      "command": "code-search-mcp"
     }
   }
 }
 EOF
 ```
 
-#### 3. Gemini CLI
-Add to your `~/.gemini/settings.json`:
+#### 3. 🪄 Gemini CLI
+Add to your `~/.gemini/settings.json` (or workspace `.gemini/settings.json`):
 ```json
 {
   "mcpServers": {
     "code-search": {
-      "command": "npx",
-      "args": ["-y", "github:your-username/code-search-mcp"],
+      "command": "code-search-mcp",
       "trust": true
     }
   }
 }
 ```
 
-#### 4. Cursor / Claude Desktop
-Add to your `.cursor/mcp.json`:
+#### 4. 💻 Cursor / Claude Desktop
+Add to your `.cursor/mcp.json` (or `claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
     "code-search": {
-      "command": "npx",
-      "args": ["-y", "github:your-username/code-search-mcp", "--path", "${workspaceFolder}"]
+      "command": "code-search-mcp",
+      "args": ["--path", "${workspaceFolder}"]
     }
   }
 }
 ```
+
+---
+
+### 💡 Why Direct Binary Execution?
+Running `code-search-mcp` directly (instead of through `npx` or `npm exec` wrappers) ensures that when your IDE or AI session reloads or closes, the process receives `SIGKILL` / `SIGTERM` directly and terminates cleanly in **<5ms** without leaving orphaned processes in the background.
 
 ---
 

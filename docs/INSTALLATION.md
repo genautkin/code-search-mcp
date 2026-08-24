@@ -4,9 +4,43 @@
 
 ---
 
-## ⚡️ Quick Installation by Client
+## ⚡️ Step 1: Install the Server
 
-### 1. 🤖 Antigravity CLI (`agy`)
+### Global Install directly from GitHub (Recommended — No NPM Publish Needed):
+```bash
+npm install -g github:genautkin/code-search-mcp
+```
+*(To update later, just run the same command again).*
+
+### Or Local Development / Linked (For Contributors):
+```bash
+cd /path/to/code-search-mcp
+npm install
+npm run build
+npm link
+```
+
+---
+
+## ⚡️ Step 2: Configure by AI Client
+
+Because `code-search-mcp` runs as a direct binary, it avoids wrapper overhead (`npx`/`npm exec`) and terminates instantly without leaving stale background processes.
+
+### 1. 🧠 Claude Code
+
+#### Global User Install (Available across all projects):
+```bash
+claude mcp add code-search -s user -- code-search-mcp
+```
+
+#### Single Project Install:
+```bash
+claude mcp add code-search -- code-search-mcp --path /path/to/your/project
+```
+
+---
+
+### 2. 🤖 Antigravity CLI (`agy`)
 
 Antigravity loads plugins from `~/.gemini/config/plugins/`.
 
@@ -21,32 +55,16 @@ cat << 'INNER' > ~/.gemini/config/plugins/code-search/mcp_config.json
 {
   "mcpServers": {
     "code-search": {
-      "command": "npx",
-      "args": ["-y", "github:your-username/code-search-mcp"]
+      "command": "code-search-mcp"
     }
   }
 }
 INNER
 ```
 
-#### Manual Configuration:
-Create `~/.gemini/config/plugins/code-search/` containing:
-- **`plugin.json`**: `{"name": "code-search"}`
-- **`mcp_config.json`**:
-  ```json
-  {
-    "mcpServers": {
-      "code-search": {
-        "command": "npx",
-        "args": ["-y", "github:your-username/code-search-mcp"]
-      }
-    }
-  }
-  ```
-
 ---
 
-### 2. 🪄 Gemini CLI
+### 3. 🪄 Gemini CLI
 
 Add to your global `~/.gemini/settings.json` (or workspace `.gemini/settings.json`):
 
@@ -54,26 +72,11 @@ Add to your global `~/.gemini/settings.json` (or workspace `.gemini/settings.jso
 {
   "mcpServers": {
     "code-search": {
-      "command": "npx",
-      "args": ["-y", "github:your-username/code-search-mcp"],
+      "command": "code-search-mcp",
       "trust": true
     }
   }
 }
-```
-
----
-
-### 3. 🧠 Claude Code
-
-#### Global User Install (Available across all projects):
-```bash
-claude mcp add code-search -s user -- npx -y github:your-username/code-search-mcp
-```
-
-#### Single Project Install:
-```bash
-claude mcp add code-search -- npx -y github:your-username/code-search-mcp --path /path/to/your/project
 ```
 
 ---
@@ -86,8 +89,8 @@ Add to `.cursor/mcp.json` or `claude_desktop_config.json`:
 {
   "mcpServers": {
     "code-search": {
-      "command": "npx",
-      "args": ["-y", "github:your-username/code-search-mcp", "--path", "${workspaceFolder}"]
+      "command": "code-search-mcp",
+      "args": ["--path", "${workspaceFolder}"]
     }
   }
 }
@@ -95,17 +98,10 @@ Add to `.cursor/mcp.json` or `claude_desktop_config.json`:
 
 ---
 
-## 🛠 Local Development Mode (Before Publishing to npm)
-
-If you are developing or testing `code-search-mcp` locally before publishing to npm:
-
-```bash
-cd /path/to/code-search-mcp
-npm run build
-npm link
-```
-
-Then replace `"npx", "-y", "code-search-mcp"` with `"code-search-mcp"` or `"/usr/local/bin/code-search-mcp"`.
+### 💡 Why Direct Execution?
+Running `code-search-mcp` directly (rather than via `npx` or `npm exec`) gives the host direct process control:
+- Instant shutdown in `<5ms` upon reload or exit.
+- Prevents detached wrapper child processes from lingering in the background.
 
 ---
 

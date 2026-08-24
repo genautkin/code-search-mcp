@@ -19,7 +19,8 @@
 │           └───────────┬─────────┴──────────────────┘        │
 │                       ▼                                     │
 │              VectorStore (LanceDB)                          │
-│          Stored locally in .code-search/                    │
+│          Stored in node_modules/.cache/code-search/          │
+│          lancedb/ (fallback: .code-search/)                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -37,7 +38,13 @@
 - Generates 384-dimensional dense vectors locally with zero token costs and zero API latency.
 - Completely private — no code chunks are ever sent outside your local machine.
 
-### 3. Non-Blocking Indexing with Real-Time Feedback
+### 3. Local Index Storage
+
+- The LanceDB index is stored at `node_modules/.cache/code-search/lancedb/` by default.
+- If the project does not have `node_modules`, storage falls back cleanly to `.code-search/`.
+- Both locations are local and intended to remain outside version control.
+
+### 4. Non-Blocking Indexing with Real-Time Feedback
 - Responds to MCP initialization handshakes in milliseconds (<15ms).
 - If an agent performs a search while initial indexing is running, results from currently indexed chunks are returned immediately alongside a progress banner:
   ```text
@@ -46,7 +53,7 @@
   ...
   ```
 
-### 4. Live In-Process Watcher
+### 5. Live In-Process Watcher
 - Watches project directories using `chokidar`.
 - When a file is created, modified, or deleted, only that single file is re-chunked and re-embedded incrementally (~200ms).
 - Eliminates the need for Git hooks (`pre-commit` / `post-checkout`) to keep vectors synchronized.
