@@ -38,35 +38,62 @@ var DEFAULT_EXTENSIONS = [
 ];
 var DEFAULT_EXCLUDES = [
   // Build and distribution artifacts
+  "dist",
   "dist/**",
+  "dist-*",
   "dist-*/**",
+  "build",
   "build/**",
+  "out",
   "out/**",
+  "bin",
   "bin/**",
+  "obj",
   "obj/**",
+  "www",
   "www/**",
+  "wwwroot",
   "wwwroot/**",
+  "coverage",
   "coverage/**",
+  ".nyc_output",
   ".nyc_output/**",
   // Dependency directories
+  "node_modules",
   "node_modules/**",
+  "vendor",
   "vendor/**",
+  "bower_components",
   "bower_components/**",
+  ".pnpm-store",
   ".pnpm-store/**",
   // IDEs and tools
+  ".git",
   ".git/**",
+  ".svn",
   ".svn/**",
+  ".hg",
   ".hg/**",
+  ".idea",
   ".idea/**",
+  ".vscode",
   ".vscode/**",
+  ".gemini",
   ".gemini/**",
+  ".claude",
   ".claude/**",
+  ".codegraph",
   ".codegraph/**",
+  ".vectorcode",
   ".vectorcode/**",
+  ".code-search",
   ".code-search/**",
   // Mobile / native wrapper builds
+  "android",
   "android/**",
+  "ios",
   "ios/**",
+  "windows_build",
   "windows_build/**",
   // Lock files
   "package-lock.json",
@@ -182,10 +209,12 @@ function createIgnoreMatcher(projectRoot, customExcludes = []) {
     ig.add(customExcludes);
   }
   return {
-    ignores: (relPath) => {
+    ignores: (relPath, isDirectory = false) => {
       const normalized = relPath.replace(/\\/g, "/").replace(/^\.\//, "");
       if (!normalized || normalized === ".") return false;
-      return ig.ignores(normalized);
+      if (ig.ignores(normalized)) return true;
+      if (isDirectory && ig.ignores(normalized + "/")) return true;
+      return false;
     }
   };
 }
@@ -914,10 +943,11 @@ async function scanDirectory(config, indexedFilesMap = /* @__PURE__ */ new Map()
     for (const entry of entries) {
       const fullPath = path3.join(currentDir, entry.name);
       const relPath = normalizePath(path3.relative(config.projectRoot, fullPath));
-      if (matcher.ignores(relPath)) {
+      const isDir = entry.isDirectory();
+      if (matcher.ignores(relPath, isDir)) {
         continue;
       }
-      if (entry.isDirectory()) {
+      if (isDir) {
         walk(fullPath);
       } else if (entry.isFile()) {
         const ext = path3.extname(entry.name).toLowerCase();
@@ -1221,10 +1251,11 @@ var FileWatcher = class {
     if (this.watcher) return;
     this.readyPromise = new Promise((resolve2) => {
       this.watcher = chokidar.watch(this.config.projectRoot, {
-        ignored: (filePath) => {
+        ignored: (filePath, stats) => {
           const rel = normalizePath(path6.relative(this.config.projectRoot, filePath));
           if (!rel || rel === ".") return false;
-          return this.matcher.ignores(rel);
+          const isDir = stats ? typeof stats.isDirectory === "function" ? stats.isDirectory() : false : false;
+          return this.matcher.ignores(rel, isDir);
         },
         persistent: true,
         ignoreInitial: true
@@ -1506,4 +1537,4 @@ export {
   FileWatcher,
   createMcpServer
 };
-//# sourceMappingURL=chunk-LOBIVGYL.js.map
+//# sourceMappingURL=chunk-RNFGTPPA.js.map

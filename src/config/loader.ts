@@ -29,7 +29,7 @@ export function findProjectRoot(startDir: string = process.cwd()): string {
   }
 }
 
-export function createIgnoreMatcher(projectRoot: string, customExcludes: string[] = []): { ignores: (relPath: string) => boolean } {
+export function createIgnoreMatcher(projectRoot: string, customExcludes: string[] = []): { ignores: (relPath: string, isDirectory?: boolean) => boolean } {
   // @ts-ignore
   const ig: Ignore = ignore.default ? ignore.default() : ignore();
 
@@ -75,11 +75,13 @@ export function createIgnoreMatcher(projectRoot: string, customExcludes: string[
   }
 
   return {
-    ignores: (relPath: string): boolean => {
+    ignores: (relPath: string, isDirectory: boolean = false): boolean => {
       // Normalize slashes for cross-platform matching
       const normalized = relPath.replace(/\\/g, '/').replace(/^\.\//, '');
       if (!normalized || normalized === '.') return false;
-      return ig.ignores(normalized);
+      if (ig.ignores(normalized)) return true;
+      if (isDirectory && ig.ignores(normalized + '/')) return true;
+      return false;
     }
   };
 }

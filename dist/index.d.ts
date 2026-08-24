@@ -73,7 +73,7 @@ declare const DEFAULT_CONFIG: {
 
 declare function findProjectRoot(startDir?: string): string;
 declare function createIgnoreMatcher(projectRoot: string, customExcludes?: string[]): {
-    ignores: (relPath: string) => boolean;
+    ignores: (relPath: string, isDirectory?: boolean) => boolean;
 };
 declare function loadConfig(projectRoot: string): CodeSearchConfig;
 

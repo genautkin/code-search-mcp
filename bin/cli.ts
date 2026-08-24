@@ -39,13 +39,11 @@ program
 
       const { start, stop } = await createMcpServer(config);
 
-      const handleExit = async () => {
+      const handleExit = () => {
         try {
           logger.info('Stopping code-search-mcp session', { pid: process.pid });
-          await stop();
-        } finally {
-          process.exit(0);
-        }
+        } catch {}
+        process.exit(0);
       };
 
       process.on('SIGINT', handleExit);

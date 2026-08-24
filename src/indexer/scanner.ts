@@ -27,12 +27,13 @@ export async function scanDirectory(
     for (const entry of entries) {
       const fullPath = path.join(currentDir, entry.name);
       const relPath = normalizePath(path.relative(config.projectRoot, fullPath));
+      const isDir = entry.isDirectory();
 
-      if (matcher.ignores(relPath)) {
+      if (matcher.ignores(relPath, isDir)) {
         continue;
       }
 
-      if (entry.isDirectory()) {
+      if (isDir) {
         walk(fullPath);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();

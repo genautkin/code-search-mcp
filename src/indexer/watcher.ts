@@ -11,7 +11,7 @@ export class FileWatcher {
   private watcher: FSWatcher | null = null;
   private debounceMap: Map<string, NodeJS.Timeout> = new Map();
   private supportedExts: Set<string>;
-  private matcher: { ignores: (relPath: string) => boolean };
+  private matcher: ReturnType<typeof createIgnoreMatcher>;
 
   constructor(config: CodeSearchConfig, worker: IndexerWorker) {
     this.config = config;
@@ -27,10 +27,11 @@ export class FileWatcher {
 
     this.readyPromise = new Promise((resolve) => {
       this.watcher = chokidar.watch(this.config.projectRoot, {
-        ignored: (filePath: string) => {
+        ignored: (filePath: string, stats?: any) => {
           const rel = normalizePath(path.relative(this.config.projectRoot, filePath));
           if (!rel || rel === '.') return false;
-          return this.matcher.ignores(rel);
+          const isDir = stats ? (typeof stats.isDirectory === 'function' ? stats.isDirectory() : false) : false;
+          return this.matcher.ignores(rel, isDir);
         },
         persistent: true,
         ignoreInitial: true

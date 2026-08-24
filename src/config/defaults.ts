@@ -11,19 +11,19 @@ export const DEFAULT_EXTENSIONS = [
 
 export const DEFAULT_EXCLUDES = [
   // Build and distribution artifacts
-  'dist/**', 'dist-*/**', 'build/**', 'out/**', 'bin/**', 'obj/**', 'www/**', 'wwwroot/**',
-  'coverage/**', '.nyc_output/**',
+  'dist', 'dist/**', 'dist-*', 'dist-*/**', 'build', 'build/**', 'out', 'out/**', 'bin', 'bin/**', 'obj', 'obj/**', 'www', 'www/**', 'wwwroot', 'wwwroot/**',
+  'coverage', 'coverage/**', '.nyc_output', '.nyc_output/**',
   
   // Dependency directories
-  'node_modules/**', 'vendor/**', 'bower_components/**', '.pnpm-store/**',
+  'node_modules', 'node_modules/**', 'vendor', 'vendor/**', 'bower_components', 'bower_components/**', '.pnpm-store', '.pnpm-store/**',
   
   // IDEs and tools
-  '.git/**', '.svn/**', '.hg/**',
-  '.idea/**', '.vscode/**', '.gemini/**', '.claude/**',
-  '.codegraph/**', '.vectorcode/**', '.code-search/**',
+  '.git', '.git/**', '.svn', '.svn/**', '.hg', '.hg/**',
+  '.idea', '.idea/**', '.vscode', '.vscode/**', '.gemini', '.gemini/**', '.claude', '.claude/**',
+  '.codegraph', '.codegraph/**', '.vectorcode', '.vectorcode/**', '.code-search', '.code-search/**',
   
   // Mobile / native wrapper builds
-  'android/**', 'ios/**', 'windows_build/**',
+  'android', 'android/**', 'ios', 'ios/**', 'windows_build', 'windows_build/**',
   
   // Lock files
   'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'composer.lock', 'Gemfile.lock', 'Cargo.lock', 'packages.lock.json',

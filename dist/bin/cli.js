@@ -3,7 +3,7 @@ import {
   createMcpServer,
   findProjectRoot,
   loadConfig
-} from "../chunk-LOBIVGYL.js";
+} from "../chunk-RNFGTPPA.js";
 
 // bin/cli.ts
 import { Command } from "commander";
@@ -96,13 +96,12 @@ program.name("code-search-mcp").description("Zero-daemon local semantic code sea
     process.stderr.write(`[code-search-mcp] Database path: ${config.dbPath}
 `);
     const { start, stop } = await createMcpServer(config);
-    const handleExit = async () => {
+    const handleExit = () => {
       try {
         logger.info("Stopping code-search-mcp session", { pid: process.pid });
-        await stop();
-      } finally {
-        process.exit(0);
+      } catch {
       }
+      process.exit(0);
     };
     process.on("SIGINT", handleExit);
     process.on("SIGTERM", handleExit);
