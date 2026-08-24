@@ -3,7 +3,7 @@ import {
   createMcpServer,
   findProjectRoot,
   loadConfig
-} from "../chunk-RNFGTPPA.js";
+} from "../chunk-SPJQEFWO.js";
 
 // bin/cli.ts
 import { Command } from "commander";

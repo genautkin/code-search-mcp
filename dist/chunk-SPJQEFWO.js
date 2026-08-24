@@ -494,7 +494,7 @@ var VectorStore = class {
         if (isConflict && attempt < maxRetries) {
           attempt++;
           const delay = 50 * Math.pow(2, attempt) + Math.floor(Math.random() * 50);
-          await new Promise((resolve2) => setTimeout(resolve2, delay));
+          await new Promise((resolve3) => setTimeout(resolve3, delay));
           if (this.db) {
             try {
               this.table = await this.db.openTable(TABLE_NAME);
@@ -1232,6 +1232,7 @@ var IndexerWorker = class {
 
 // src/indexer/watcher.ts
 import chokidar from "chokidar";
+import * as fs6 from "fs";
 import * as path6 from "path";
 var FileWatcher = class {
   config;
@@ -1249,7 +1250,7 @@ var FileWatcher = class {
   readyPromise = null;
   async start() {
     if (this.watcher) return;
-    this.readyPromise = new Promise((resolve2) => {
+    this.readyPromise = new Promise((resolve3) => {
       this.watcher = chokidar.watch(this.config.projectRoot, {
         ignored: (filePath, stats) => {
           const rel = normalizePath(path6.relative(this.config.projectRoot, filePath));
@@ -1261,7 +1262,7 @@ var FileWatcher = class {
         ignoreInitial: true
       });
       this.watcher.on("ready", () => {
-        resolve2();
+        resolve3();
       });
       this.watcher.on("add", (filePath) => this.handleFileChange(filePath));
       this.watcher.on("change", (filePath) => this.handleFileChange(filePath));
@@ -1277,8 +1278,13 @@ var FileWatcher = class {
   handleFileChange(filePath) {
     const ext = path6.extname(filePath).toLowerCase();
     if (!this.supportedExts.has(ext)) return;
-    const relPath = normalizePath(path6.relative(this.config.projectRoot, filePath));
-    if (this.matcher.ignores(relPath)) return;
+    let absPath = path6.resolve(filePath);
+    try {
+      absPath = fs6.realpathSync(absPath);
+    } catch {
+    }
+    const relPath = normalizePath(path6.relative(this.config.projectRoot, absPath));
+    if (!relPath || relPath.startsWith("..") || this.matcher.ignores(relPath)) return;
     const existingTimeout = this.debounceMap.get(relPath);
     if (existingTimeout) {
       clearTimeout(existingTimeout);
@@ -1286,7 +1292,7 @@ var FileWatcher = class {
     const timer = setTimeout(async () => {
       this.debounceMap.delete(relPath);
       try {
-        await this.worker.indexSingleFile(relPath, filePath);
+        await this.worker.indexSingleFile(relPath, absPath);
       } catch (err) {
         console.warn(`[code-search-mcp] Failed to incrementally index ${relPath}:`, err);
       }
@@ -1294,7 +1300,13 @@ var FileWatcher = class {
     this.debounceMap.set(relPath, timer);
   }
   handleFileUnlink(filePath) {
-    const relPath = normalizePath(path6.relative(this.config.projectRoot, filePath));
+    let absPath = path6.resolve(filePath);
+    try {
+      absPath = fs6.realpathSync(absPath);
+    } catch {
+    }
+    const relPath = normalizePath(path6.relative(this.config.projectRoot, absPath));
+    if (!relPath || relPath.startsWith("..")) return;
     const existingTimeout = this.debounceMap.get(relPath);
     if (existingTimeout) {
       clearTimeout(existingTimeout);
@@ -1417,6 +1429,34 @@ async function createMcpServer(config) {
 - **\`pathFilter\`**: Restrict search to specific feature areas (e.g. \`pathFilter: "src/auth"\` or \`pathFilter: "src/billing"\`).
 - **\`language\`**: Restrict results by language (e.g. \`language: "typescript"\`, \`"vue"\`, \`"javascript"\`).
 
+## How to Configure Ignore / Exclusions:
+To exclude files, directories, or assets from being indexed in this repository:
+
+1. **\`.codesearchignore\` (Recommended for search exclusions)**:
+   Create a \`.codesearchignore\` file in the project root with glob patterns (standard gitignore syntax):
+   \`\`\`gitignore
+   # Ignore assets and fixtures
+   src/assets/**
+   tests/fixtures/**
+   legacy/**
+   *.spec.ts
+   \`\`\`
+
+2. **\`.gitignore\` & \`.ignore\`**:
+   Any patterns in \`.gitignore\` or \`.ignore\` in the project root are automatically honored.
+
+3. **\`.codesearchrc.json\` (Full repository configuration)**:
+   Create a \`.codesearchrc.json\` file in the project root:
+   \`\`\`json
+   {
+     "customExcludes": ["src/assets/**", "fixtures/**"],
+     "supportedExtensions": [".ts", ".tsx", ".js", ".vue"],
+     "maxFileSizeKb": 500
+   }
+   \`\`\`
+
+*Note: After adding or changing ignore rules, run \`code_search_reindex({ forceFull: true })\` to rebuild the index.*
+
 ## When to Use Other Tools Instead:
 - Use **CodeGraph (\`codegraph_explore\`)** when navigating a known symbol's references, call hierarchy, or type definitions.
 - Use **grep** when searching for an exact literal string constant, error code, or exact CSS class name.`;
@@ -1537,4 +1577,4 @@ export {
   FileWatcher,
   createMcpServer
 };
-//# sourceMappingURL=chunk-RNFGTPPA.js.map
+//# sourceMappingURL=chunk-SPJQEFWO.js.map

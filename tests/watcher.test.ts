@@ -32,6 +32,9 @@ describe('File Watcher Incremental Indexing', () => {
   });
 
   it('should auto-index a newly created file after a short delay', async () => {
+    // Wait a short delay for OS file watcher to attach
+    await new Promise((r) => setTimeout(r, 150));
+
     // Write new file
     fs.writeFileSync(
       path.join(tempDir, 'src', 'metrics.ts'),

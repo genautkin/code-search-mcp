@@ -1,4 +1,5 @@
 import chokidar, { FSWatcher } from 'chokidar';
+import * as fs from 'fs';
 import * as path from 'path';
 import { CodeSearchConfig } from '../types.js';
 import { IndexerWorker } from './worker.js';
@@ -59,8 +60,13 @@ export class FileWatcher {
     const ext = path.extname(filePath).toLowerCase();
     if (!this.supportedExts.has(ext)) return;
 
-    const relPath = normalizePath(path.relative(this.config.projectRoot, filePath));
-    if (this.matcher.ignores(relPath)) return;
+    let absPath = path.resolve(filePath);
+    try {
+      absPath = fs.realpathSync(absPath);
+    } catch {}
+
+    const relPath = normalizePath(path.relative(this.config.projectRoot, absPath));
+    if (!relPath || relPath.startsWith('..') || this.matcher.ignores(relPath)) return;
 
     const existingTimeout = this.debounceMap.get(relPath);
     if (existingTimeout) {
@@ -70,7 +76,7 @@ export class FileWatcher {
     const timer = setTimeout(async () => {
       this.debounceMap.delete(relPath);
       try {
-        await this.worker.indexSingleFile(relPath, filePath);
+        await this.worker.indexSingleFile(relPath, absPath);
       } catch (err) {
         console.warn(`[code-search-mcp] Failed to incrementally index ${relPath}:`, err);
       }
@@ -80,7 +86,14 @@ export class FileWatcher {
   }
 
   private handleFileUnlink(filePath: string): void {
-    const relPath = normalizePath(path.relative(this.config.projectRoot, filePath));
+    let absPath = path.resolve(filePath);
+    try {
+      absPath = fs.realpathSync(absPath);
+    } catch {}
+
+    const relPath = normalizePath(path.relative(this.config.projectRoot, absPath));
+    if (!relPath || relPath.startsWith('..')) return;
+
     const existingTimeout = this.debounceMap.get(relPath);
     if (existingTimeout) {
       clearTimeout(existingTimeout);

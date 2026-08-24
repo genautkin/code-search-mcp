@@ -117,6 +117,34 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
 - **\`pathFilter\`**: Restrict search to specific feature areas (e.g. \`pathFilter: "src/auth"\` or \`pathFilter: "src/billing"\`).
 - **\`language\`**: Restrict results by language (e.g. \`language: "typescript"\`, \`"vue"\`, \`"javascript"\`).
 
+## How to Configure Ignore / Exclusions:
+To exclude files, directories, or assets from being indexed in this repository:
+
+1. **\`.codesearchignore\` (Recommended for search exclusions)**:
+   Create a \`.codesearchignore\` file in the project root with glob patterns (standard gitignore syntax):
+   \`\`\`gitignore
+   # Ignore assets and fixtures
+   src/assets/**
+   tests/fixtures/**
+   legacy/**
+   *.spec.ts
+   \`\`\`
+
+2. **\`.gitignore\` & \`.ignore\`**:
+   Any patterns in \`.gitignore\` or \`.ignore\` in the project root are automatically honored.
+
+3. **\`.codesearchrc.json\` (Full repository configuration)**:
+   Create a \`.codesearchrc.json\` file in the project root:
+   \`\`\`json
+   {
+     "customExcludes": ["src/assets/**", "fixtures/**"],
+     "supportedExtensions": [".ts", ".tsx", ".js", ".vue"],
+     "maxFileSizeKb": 500
+   }
+   \`\`\`
+
+*Note: After adding or changing ignore rules, run \`code_search_reindex({ forceFull: true })\` to rebuild the index.*
+
 ## When to Use Other Tools Instead:
 - Use **CodeGraph (\`codegraph_explore\`)** when navigating a known symbol's references, call hierarchy, or type definitions.
 - Use **grep** when searching for an exact literal string constant, error code, or exact CSS class name.`;
