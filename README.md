@@ -315,11 +315,16 @@ If you are an AI assistant (Claude Code, Gemini CLI, Cursor, Antigravity, or Win
 
 | Tool Name | Arguments | Description | When to Call |
 | :--- | :--- | :--- | :--- |
-| **`code_search`** | `query` *(required)*<br>`limit` *(optional, default 10)*<br>`pathFilter` *(optional string)*<br>`language` *(optional string)*<br>`codeOnly` *(optional boolean)* | Performs hybrid semantic + lexical search across indexed repository files. Returns line-numbered code chunks with similarity scores. | **FIRST CALL** whenever locating concepts, business logic, workflows, UI components, or features described in natural language. |
+| **`code_search`** | `query` *(required)*<br>`limit` *(optional, default 10)*<br>`pathFilter` *(optional string)*<br>`language` *(optional string)*<br>`codeOnly` *(optional boolean)* | Performs hybrid semantic + lexical search across indexed repository files. Returns line-numbered code chunks with similarity scores. | **Primary tool for natural language & conceptual queries**: Call whenever locating concepts, business logic, workflows, UI components, or features described in natural language, before attempting blind greps. |
 | **`code_search_init`** | `indexPath` *(optional)*<br>`respectGitignore` *(optional)*<br>`supportedExtensions` *(optional)* | Initializes semantic search for the repository and builds initial index. | When repository is not yet initialized. |
 | **`code_search_status`** | *(none)* | Returns current indexing progress (`READY`, `INDEXING`, `UNINITIALIZED`), percentage, total files, and chunk count in LanceDB. | Check indexing progress. |
 | **`code_search_reindex`** | `forceFull` *(optional boolean)* | Triggers a background re-index or complete database rebuild. | After massive merges or when user requests rebuild. |
 | **`code_search_guide`** | *(none)* | Returns inline agent usage best practices and tips. | Call to self-discover best practices during tool invocation. |
+
+### 🧭 Tool Selection Rule for Agents:
+- 💡 **Natural language & conceptual search** (e.g. *"how are orders discounted"*, *"where is user session checked"*): Use **`code_search`** first.
+- 🔗 **Known symbol call chains & references**: Use **CodeGraph (`codegraph_explore`)**.
+- 🔤 **Exact literal constants, error codes, CSS class names**: Use **`grep`**.
 
 ---
 
@@ -329,7 +334,7 @@ To run the automated test suite:
 ```bash
 npm test
 ```
-All **43 unit & integration tests** verify the MCP protocol handshake, ONNX vector generation, LanceDB storage, watcher lifecycle, word stemming, typo correction, init wizard, and dormant mode.
+All **45 unit & integration tests** verify the MCP protocol handshake, ONNX vector generation, LanceDB storage, watcher lifecycle, word stemming, typo correction, init wizard, and dormant server mode.
 
 ---
 
@@ -339,7 +344,7 @@ All **43 unit & integration tests** verify the MCP protocol handshake, ONNX vect
 - ✅ **Interactive `init` Wizard**: Discovers file types and configures settings with smart defaults.
 - ✅ **No background daemons**: Zero external background services or Python dependencies.
 - ✅ **Zero Git noise**: Default storage in `node_modules/.cache`.
-- ✅ **Handles typos & word variations** automatically in <1ms.
-- ✅ **Instant search by meaning**, connecting your natural language questions to the exact code you need.
+- ✅ **Handles typos & word variations** automatically.
+- ✅ **Instant search by meaning**, connecting natural language questions to the exact code you need.
 
 Happy coding! ☕️🚀

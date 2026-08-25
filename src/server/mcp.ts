@@ -167,20 +167,20 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
       const guideText = `# Semantic Code Search — AI Agent Guide
 
 ## When to Use \`code_search\`:
-- Use \`code_search\` FIRST whenever looking for features, domain logic, workflows, UI components, or concepts described in natural language (e.g. "where are authentication tokens refreshed", "shopping cart discount formula", "dark mode toggle component").
-- Use \`code_search\` when you DO NOT know the exact variable or function name.
+- **Natural Language & Conceptual Search**: Use \`code_search\` whenever searching for concepts, workflows, business logic, UI components, or features described in natural language (e.g. "where are authentication tokens refreshed", "shopping cart discount formula", "dark mode toggle component").
+- **Unknown Identifiers**: Use \`code_search\` when you do not know the exact file name or variable/function name, before attempting brute-force directory listings or broad greps.
 
-## Initialization:
-- If this repository is not initialized, run the \`code_search_init\` tool or ask the user to run \`npx code-search-mcp init\`.
+## When to Use Other Tools Instead:
+- **Known Symbol Call Chains**: Use **CodeGraph (\`codegraph_explore\`)** when navigating a known symbol's references, call hierarchy, or type definitions.
+- **Exact Literal Strings**: Use **grep** when searching for an exact literal constant, error string, or specific CSS class name.
 
-## Filtering Options:
-- **\`codeOnly: true\`**: Exclude markdown specs/guides to find pure code calculation implementations directly.
+## Helpful Filtering Options:
+- **\`codeOnly: true\`**: Exclude markdown documentation (.md) to prioritize pure source code implementations.
 - **\`pathFilter\`**: Restrict search to specific feature areas (e.g. \`pathFilter: "src/auth"\` or \`pathFilter: "src/billing"\`).
 - **\`language\`**: Restrict results by language (e.g. \`language: "typescript"\`, \`"vue"\`, \`"javascript"\`).
 
-## When to Use Other Tools Instead:
-- Use **CodeGraph (\`codegraph_explore\`)** when navigating a known symbol's references, call hierarchy, or type definitions.
-- Use **grep** when searching for an exact literal string constant, error code, or exact CSS class name.`;
+## Initialization:
+- If this repository is not initialized, run the \`code_search_init\` tool or ask the user to run \`npx code-search-mcp init\`.`;
 
       return {
         content: [
