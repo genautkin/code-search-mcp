@@ -4,7 +4,7 @@ import { select, confirm, input } from '@inquirer/prompts';
 import { InitOptions } from '../types.js';
 import { findProjectRoot, isProjectInitialized, loadConfig } from '../config/loader.js';
 import { RECOMMENDED_CODESEARCHIGNORE, DEFAULT_EXTENSIONS, DEFAULT_CONFIG } from '../config/defaults.js';
-import { detectProjectExtensions } from './detector.js';
+import { detectProjectExtensions, detectIgnoreCandidates } from './detector.js';
 import { IndexerWorker } from '../indexer/worker.js';
 
 export async function runInit(options: InitOptions = {}): Promise<void> {
@@ -80,18 +80,45 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     });
   }
 
-  // 3. Search Ignore File (.codesearchignore)
+  // 3. Search Ignore File (.codesearchignore) & Detected Candidate Ignores
   const ignoreFilePath = path.join(canonicalRoot, '.codesearchignore');
   const ignoreFileExists = fs.existsSync(ignoreFilePath);
   let createIgnoreFile = options.createIgnoreFile ?? !ignoreFileExists;
+  let extraCustomExcludes: string[] = [];
+
   if (isInteractive && options.createIgnoreFile === undefined) {
+    const candidateFolders = detectIgnoreCandidates(canonicalRoot);
+    if (candidateFolders.length > 0) {
+      console.log('\n🧹 Detected project folders suitable for exclusion:');
+      for (const cand of candidateFolders) {
+        console.log(`   • ${cand.label}`);
+      }
+      console.log('');
+    }
+
     if (!ignoreFileExists) {
       createIgnoreFile = await confirm({
-        message: 'Create a .codesearchignore file with recommended excludes (fixtures, mocks, minified code)?',
+        message: 'Create a .codesearchignore file with recommended excludes (agent skills, fixtures, mocks, builds)?',
         default: true
       });
     } else {
       createIgnoreFile = false;
+    }
+
+    const wantCustomExcludes = await confirm({
+      message: 'Add custom folder/pattern excludes to configuration now?',
+      default: false
+    });
+
+    if (wantCustomExcludes) {
+      const customInput = await input({
+        message: 'Enter comma-separated glob patterns to exclude (e.g. legacy/**, vendor/**, src/strings/**):',
+        default: ''
+      });
+      extraCustomExcludes = customInput
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
     }
   }
 
@@ -179,7 +206,7 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     indexPath: chosenIndexPath,
     respectGitignore,
     supportedExtensions,
-    customExcludes: [],
+    customExcludes: extraCustomExcludes,
     maxFileSizeKb: DEFAULT_CONFIG.maxFileSizeKb,
     embeddingModel: DEFAULT_CONFIG.embeddingModel
   };

@@ -76,3 +76,33 @@ export function detectProjectExtensions(
     totalFiles
   };
 }
+
+const CANDIDATE_IGNORE_DIRS = [
+  { path: '.github/skills', label: '.github/skills/** (AI agent skills)' },
+  { path: '.github/instructions', label: '.github/instructions/** (AI system instructions)' },
+  { path: '.github/prompts', label: '.github/prompts/** (AI prompt templates)' },
+  { path: '.gemini/skills', label: '.gemini/skills/** (AI agent skills)' },
+  { path: '.claude/skills', label: '.claude/skills/** (AI agent skills)' },
+  { path: 'skills', label: 'skills/** (Agent skill definitions)' },
+  { path: 'fixtures', label: '**/fixtures/** (Test fixtures)' },
+  { path: 'mocks', label: '**/mocks/** (Mock data & stubs)' },
+  { path: 'e2e', label: '**/e2e/** (End-to-end test suites)' },
+  { path: 'cypress', label: 'cypress/** (Cypress tests & fixtures)' },
+  { path: 'locales', label: '**/locales/** (Localization dictionaries)' },
+  { path: 'i18n', label: '**/i18n/** (Translation files)' },
+  { path: 'docs', label: 'docs/** (Documentation markdown)' }
+];
+
+export function detectIgnoreCandidates(projectRoot: string): { path: string; label: string; exists: boolean }[] {
+  const root = path.resolve(projectRoot);
+  const found: { path: string; label: string; exists: boolean }[] = [];
+
+  for (const candidate of CANDIDATE_IGNORE_DIRS) {
+    const fullPath = path.join(root, candidate.path);
+    if (fs.existsSync(fullPath)) {
+      found.push({ ...candidate, exists: true });
+    }
+  }
+
+  return found;
+}

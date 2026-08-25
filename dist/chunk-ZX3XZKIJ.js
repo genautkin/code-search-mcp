@@ -1570,6 +1570,32 @@ function detectProjectExtensions(projectRoot, options = {}) {
     totalFiles
   };
 }
+var CANDIDATE_IGNORE_DIRS = [
+  { path: ".github/skills", label: ".github/skills/** (AI agent skills)" },
+  { path: ".github/instructions", label: ".github/instructions/** (AI system instructions)" },
+  { path: ".github/prompts", label: ".github/prompts/** (AI prompt templates)" },
+  { path: ".gemini/skills", label: ".gemini/skills/** (AI agent skills)" },
+  { path: ".claude/skills", label: ".claude/skills/** (AI agent skills)" },
+  { path: "skills", label: "skills/** (Agent skill definitions)" },
+  { path: "fixtures", label: "**/fixtures/** (Test fixtures)" },
+  { path: "mocks", label: "**/mocks/** (Mock data & stubs)" },
+  { path: "e2e", label: "**/e2e/** (End-to-end test suites)" },
+  { path: "cypress", label: "cypress/** (Cypress tests & fixtures)" },
+  { path: "locales", label: "**/locales/** (Localization dictionaries)" },
+  { path: "i18n", label: "**/i18n/** (Translation files)" },
+  { path: "docs", label: "docs/** (Documentation markdown)" }
+];
+function detectIgnoreCandidates(projectRoot) {
+  const root = path7.resolve(projectRoot);
+  const found = [];
+  for (const candidate of CANDIDATE_IGNORE_DIRS) {
+    const fullPath = path7.join(root, candidate.path);
+    if (fs7.existsSync(fullPath)) {
+      found.push({ ...candidate, exists: true });
+    }
+  }
+  return found;
+}
 
 // src/cli/init.ts
 async function runInit(options = {}) {
@@ -1636,14 +1662,34 @@ async function runInit(options = {}) {
   const ignoreFilePath = path8.join(canonicalRoot, ".codesearchignore");
   const ignoreFileExists = fs8.existsSync(ignoreFilePath);
   let createIgnoreFile = options.createIgnoreFile ?? !ignoreFileExists;
+  let extraCustomExcludes = [];
   if (isInteractive && options.createIgnoreFile === void 0) {
+    const candidateFolders = detectIgnoreCandidates(canonicalRoot);
+    if (candidateFolders.length > 0) {
+      console.log("\n\u{1F9F9} Detected project folders suitable for exclusion:");
+      for (const cand of candidateFolders) {
+        console.log(`   \u2022 ${cand.label}`);
+      }
+      console.log("");
+    }
     if (!ignoreFileExists) {
       createIgnoreFile = await confirm({
-        message: "Create a .codesearchignore file with recommended excludes (fixtures, mocks, minified code)?",
+        message: "Create a .codesearchignore file with recommended excludes (agent skills, fixtures, mocks, builds)?",
         default: true
       });
     } else {
       createIgnoreFile = false;
+    }
+    const wantCustomExcludes = await confirm({
+      message: "Add custom folder/pattern excludes to configuration now?",
+      default: false
+    });
+    if (wantCustomExcludes) {
+      const customInput = await input({
+        message: "Enter comma-separated glob patterns to exclude (e.g. legacy/**, vendor/**, src/strings/**):",
+        default: ""
+      });
+      extraCustomExcludes = customInput.split(",").map((p) => p.trim()).filter(Boolean);
     }
   }
   let supportedExtensions = options.supportedExtensions;
@@ -1713,7 +1759,7 @@ async function runInit(options = {}) {
     indexPath: chosenIndexPath,
     respectGitignore,
     supportedExtensions,
-    customExcludes: [],
+    customExcludes: extraCustomExcludes,
     maxFileSizeKb: DEFAULT_CONFIG.maxFileSizeKb,
     embeddingModel: DEFAULT_CONFIG.embeddingModel
   };
@@ -2069,4 +2115,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-CAKW5ZZ4.js.map
+//# sourceMappingURL=chunk-ZX3XZKIJ.js.map
