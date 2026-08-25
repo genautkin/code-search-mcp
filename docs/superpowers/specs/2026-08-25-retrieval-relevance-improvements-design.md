@@ -29,7 +29,7 @@ The first implementation checkpoint is limited to the benchmark and baseline. No
 
 ## Current implementation findings
 
-- `src/indexer/chunker.ts` uses line-based chunks with configurable maximum size and overlap, snapping some boundaries to natural-looking lines. It extracts identifiers for embedding context but does not create symbol-bounded chunks.
+- `src/indexer/chunker.ts` uses line-based chunks with configurable maximum size and overlap, currently defaulting to 45 lines and 10 lines of overlap (the attached prompt's 60/15 description does not match the implementation), and snaps some boundaries to natural-looking lines. It extracts identifiers for embedding context but does not create symbol-bounded chunks.
 - `formatChunkForEmbedding` adds file path, line range, language, and extracted symbols to the embedding representation.
 - `CodeChunk` stores file path, absolute path, line range, source content, content hash, language, timestamp, and optional vector. It does not yet store explicit symbol metadata.
 - `VectorStore.searchLexical` uses LanceDB path predicates and custom token/content scoring with query enhancement, stemming, camelCase splitting, and path boosts. It is not native BM25.
@@ -50,15 +50,19 @@ interface SearchBenchmarkCase {
 }
 ```
 
-The initial suite will contain at least 30 realistic queries drawn from this repository, covering exact and partial symbols, conceptual questions, vocabulary mismatch, path/language concepts, configuration, and errors/constants. Cases will use stable repository symbols and paths rather than invented examples.
+The initial suite will contain at least 30 realistic queries drawn from this repository, covering exact and partial symbols, conceptual questions, vocabulary mismatch, path/language concepts, configuration, and errors/constants. Cases will use stable repository symbols and paths rather than invented examples. Cases will distinguish `expectedFile`, `expectedSymbol`, and optional line-range expectations; symbol cases are relevant only when the returned snippet itself contains the expected symbol, not merely because another chunk from the same file is returned.
 
 The benchmark will calculate Hit@1, Hit@3, Hit@5, MRR, and Recall@10 when the case has suitable expected files. A result is relevant when its file matches an expected file, or when its content/metadata contains an expected symbol according to the case definition. The benchmark will emit machine-readable and human-readable output so later ablations can be compared without inventing values.
 
-The baseline will exercise the existing indexed repository and current search path. If a fully initialized repository index is not safely reusable in tests, the benchmark will use a temporary LanceDB index built from the repository fixtures and the existing indexing/search APIs.
+The benchmark will be runnable with `npm run benchmark:relevance`, write deterministic JSON and Markdown reports under `reports/relevance/`, and avoid stale machine-local indexes. It will build or reuse only an explicitly named temporary index for the benchmark run, using the existing indexing/search APIs. The command will record the repository revision, benchmark case count, configuration, and timestamp so comparisons are auditable.
 
 ## Symbol-aware chunking design
 
-After the baseline checkpoint, introduce a focused symbol-boundary layer above the current chunker:
+After the baseline checkpoint, introduce a focused symbol-boundary layer above the current chunker. The initial parser scope will be TypeScript and JavaScript, the repository's primary code languages; other languages will use the existing line chunker. Any parser dependency must be justified against install size and packaging impact before being added as a runtime dependency.
+
+The symbol metadata change will include an old-index compatibility decision. Existing LanceDB tables without the new columns will continue to be readable; if the selected implementation requires new schema fields, the worker will either use nullable/default values or explicitly require a safe full reindex, and tests will cover opening an old-format index. No existing index will be silently discarded.
+
+The chunking flow is:
 
 ```text
 source file
@@ -67,17 +71,15 @@ source file
   -> existing line chunker fallback on unsupported or failed parsing
 ```
 
-The implementation will first reuse dependencies already present. A large parser dependency will not be added without checking language coverage, package impact, and measurable benefit. The fallback remains the existing line chunker, ensuring every previously searchable file remains searchable.
-
-Where structure is available, chunks may carry `symbolName`, `parentSymbol`, and `symbolKind` metadata alongside existing line/path/language fields. Embedding text will include these breadcrumbs, while returned `content` remains unchanged. Exact identifier matching will remain a strong ranking signal and will not be replaced by stemming or semantic similarity.
+The fallback remains the existing line chunker, ensuring every previously searchable file remains searchable. Where structure is available, chunks may carry `symbolName`, `parentSymbol`, and `symbolKind` metadata alongside existing line/path/language fields. Embedding text will include these breadcrumbs, while returned `content` remains unchanged. Exact identifier matching will remain a strong ranking signal and will not be replaced by stemming or semantic similarity.
 
 ## Embedding-length instrumentation
 
-Measure the actual embedding input representation before changing chunk sizes or models. Record chunk character length and an estimated/tokenized length using the existing embedding tokenizer when available. Tests and benchmark output will identify the count and percentage of chunks that may exceed MiniLM's effective input length. Oversized chunks will be split before embedding rather than silently truncated.
+Measure the actual embedding input representation before changing chunk sizes or models. The current embedding engine truncates input to 2,048 characters, so instrumentation will record both character length and tokenizer-derived length using the existing embedding tokenizer when available. Tests and benchmark output will identify the count and percentage of chunks that may be truncated. Oversized symbol chunks will be split at safe internal boundaries before embedding; no source content will be silently lost from the stored chunk representation.
 
 ## Lexical and fusion design
 
-Only after benchmark evidence will lexical or fusion behavior change. The existing LanceDB version and capabilities will be inspected first. If native FTS/BM25 integrates cleanly, it will be evaluated against the current lexical scorer; otherwise, the current scorer will be improved conservatively.
+Only after benchmark evidence will lexical or fusion behavior change. The existing LanceDB version and capabilities will be inspected first. The current lexical candidate generation filters primarily on path tokens before scoring content, so any BM25 or RRF experiment must first ensure content-only matches can enter the candidate set. If native FTS/BM25 integrates cleanly, it will be evaluated against the current lexical scorer; otherwise, the current scorer will be improved conservatively.
 
 Fusion candidates will be compared experimentally:
 
@@ -91,7 +93,7 @@ The selected approach must preserve exact symbol definitions near the top for qu
 
 ## Verification and deliverables
 
-Each checkpoint will run the focused tests first, then the full test suite. Final reporting will include:
+Each checkpoint will run the focused tests first, then the full test suite. Regression coverage will explicitly include exact symbol ranking, camelCase/PascalCase normalization, conceptual queries, parser failure fallback, oversized symbols, path/language/code-only filters, incremental indexing, and lexical timeout fallback. Final reporting will include:
 
 - existing behavior and concrete problems found;
 - files and algorithms changed;
