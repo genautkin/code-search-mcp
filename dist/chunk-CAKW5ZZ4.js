@@ -1899,13 +1899,10 @@ Initial indexing completed.`
     if (name === "code_search_guide") {
       const guideText = `# Semantic Code Search \u2014 AI Agent Guide
 
-## When to Use \`code_search\`:
-- **Natural Language & Conceptual Search**: Use \`code_search\` whenever searching for concepts, workflows, business logic, UI components, or features described in natural language (e.g. "where are authentication tokens refreshed", "shopping cart discount formula", "dark mode toggle component").
-- **Unknown Identifiers**: Use \`code_search\` when you do not know the exact file name or variable/function name, before attempting brute-force directory listings or broad greps.
-
-## When to Use Other Tools Instead:
-- **Known Symbol Call Chains**: Use **CodeGraph (\`codegraph_explore\`)** when navigating a known symbol's references, call hierarchy, or type definitions.
-- **Exact Literal Strings**: Use **grep** when searching for an exact literal constant, error string, or specific CSS class name.
+## Strongly Recommended Scenarios for \`code_search\`:
+- **Natural Language & Conceptual Questions**: When searching for concepts, domain rules, business workflows, UI components, or features (e.g. "where are authentication tokens refreshed", "how is discount calculated", "dark mode toggle component").
+- **Exploring Unfamiliar Codebases**: When you do not know the exact file names, functions, or variable names.
+- **Finding Meaning Behind Code**: When exact keyword search / grep returns too many noisy results or misses synonyms.
 
 ## Helpful Filtering Options:
 - **\`codeOnly: true\`**: Exclude markdown documentation (.md) to prioritize pure source code implementations.
@@ -2072,4 +2069,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-Q4E2F7CI.js.map
+//# sourceMappingURL=chunk-CAKW5ZZ4.js.map

@@ -321,10 +321,10 @@ If you are an AI assistant (Claude Code, Gemini CLI, Cursor, Antigravity, or Win
 | **`code_search_reindex`** | `forceFull` *(optional boolean)* | Triggers a background re-index or complete database rebuild. | After massive merges or when user requests rebuild. |
 | **`code_search_guide`** | *(none)* | Returns inline agent usage best practices and tips. | Call to self-discover best practices during tool invocation. |
 
-### 🧭 Tool Selection Rule for Agents:
-- 💡 **Natural language & conceptual search** (e.g. *"how are orders discounted"*, *"where is user session checked"*): Use **`code_search`** first.
-- 🔗 **Known symbol call chains & references**: Use **CodeGraph (`codegraph_explore`)**.
-- 🔤 **Exact literal constants, error codes, CSS class names**: Use **`grep`**.
+### 💡 Strongly Recommended Scenarios for `code_search`:
+- **Natural Language & Conceptual Questions**: When searching for concepts, domain rules, business workflows, UI components, or features (e.g. *"where are authentication tokens refreshed"*, *"how is discount calculated"*, *"dark mode toggle component"*).
+- **Exploring Unfamiliar Codebases**: When you do not know the exact file names, functions, or variable names.
+- **Finding Meaning Behind Code**: When exact keyword search / grep returns too many noisy results or misses synonyms.
 
 ---
 

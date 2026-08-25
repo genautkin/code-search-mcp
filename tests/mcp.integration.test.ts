@@ -89,6 +89,6 @@ describe('MCP Server Integration', () => {
 
     const content = result.content as any[];
     expect(content[0].text).toContain('Semantic Code Search — AI Agent Guide');
-    expect(content[0].text).toContain('When to Use `code_search`');
+    expect(content[0].text).toContain('Strongly Recommended Scenarios for `code_search`');
   });
 });
