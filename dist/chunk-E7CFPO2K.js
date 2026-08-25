@@ -37,11 +37,20 @@ var DEFAULT_EXTENSIONS = [
   ".zsh"
 ];
 var DEFAULT_EXCLUDES = [
-  // Minimal internal safety guards (never index VCS internal metadata or database folder itself)
+  // Minimal internal safety guards (never index VCS internal metadata, dependencies, build or database folders)
   ".git",
   ".git/**",
   ".code-search",
-  ".code-search/**"
+  ".code-search/**",
+  "node_modules",
+  "node_modules/**",
+  "**/node_modules/**",
+  ".cache",
+  ".cache/**",
+  "dist",
+  "dist/**",
+  "build",
+  "build/**"
 ];
 var DEFAULT_CONFIG = {
   embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -1416,8 +1425,11 @@ var FileWatcher = class {
         ignored: (filePath, stats) => {
           const rel = normalizePath(path6.relative(this.config.projectRoot, filePath));
           if (!rel || rel === ".") return false;
+          if (rel.startsWith("node_modules") || rel.startsWith(".git") || rel.startsWith(".code-search") || rel.includes("/node_modules/") || rel.startsWith("dist") || rel.startsWith("build") || rel.startsWith(".cache")) {
+            return true;
+          }
           const isDir = stats ? typeof stats.isDirectory === "function" ? stats.isDirectory() : false : false;
-          return this.matcher.ignores(rel, isDir);
+          return this.matcher.ignores(rel, isDir) || this.matcher.ignores(rel + "/");
         },
         persistent: true,
         ignoreInitial: true
@@ -2167,4 +2179,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-OXHQWA2T.js.map
+//# sourceMappingURL=chunk-E7CFPO2K.js.map

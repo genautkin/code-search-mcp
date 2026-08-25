@@ -10,9 +10,14 @@ export const DEFAULT_EXTENSIONS = [
 ];
 
 export const DEFAULT_EXCLUDES = [
-  // Minimal internal safety guards (never index VCS internal metadata or database folder itself)
+  // Minimal internal safety guards (never index VCS internal metadata, dependencies, build or database folders)
   '.git', '.git/**',
-  '.code-search', '.code-search/**'
+  '.code-search', '.code-search/**',
+  'node_modules', 'node_modules/**',
+  '**/node_modules/**',
+  '.cache', '.cache/**',
+  'dist', 'dist/**',
+  'build', 'build/**'
 ];
 
 export const DEFAULT_CONFIG = {

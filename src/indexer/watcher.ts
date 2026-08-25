@@ -31,8 +31,19 @@ export class FileWatcher {
         ignored: (filePath: string, stats?: any) => {
           const rel = normalizePath(path.relative(this.config.projectRoot, filePath));
           if (!rel || rel === '.') return false;
+          if (
+            rel.startsWith('node_modules') ||
+            rel.startsWith('.git') ||
+            rel.startsWith('.code-search') ||
+            rel.includes('/node_modules/') ||
+            rel.startsWith('dist') ||
+            rel.startsWith('build') ||
+            rel.startsWith('.cache')
+          ) {
+            return true;
+          }
           const isDir = stats ? (typeof stats.isDirectory === 'function' ? stats.isDirectory() : false) : false;
-          return this.matcher.ignores(rel, isDir);
+          return this.matcher.ignores(rel, isDir) || this.matcher.ignores(rel + '/');
         },
         persistent: true,
         ignoreInitial: true
