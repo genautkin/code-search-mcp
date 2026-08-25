@@ -1570,31 +1570,57 @@ function detectProjectExtensions(projectRoot, options = {}) {
     totalFiles
   };
 }
-var CANDIDATE_IGNORE_DIRS = [
-  { path: ".github/skills", label: ".github/skills/** (AI agent skills)" },
-  { path: ".github/instructions", label: ".github/instructions/** (AI system instructions)" },
-  { path: ".github/prompts", label: ".github/prompts/** (AI prompt templates)" },
-  { path: ".gemini/skills", label: ".gemini/skills/** (AI agent skills)" },
-  { path: ".claude/skills", label: ".claude/skills/** (AI agent skills)" },
-  { path: "skills", label: "skills/** (Agent skill definitions)" },
-  { path: "fixtures", label: "**/fixtures/** (Test fixtures)" },
-  { path: "mocks", label: "**/mocks/** (Mock data & stubs)" },
-  { path: "e2e", label: "**/e2e/** (End-to-end test suites)" },
-  { path: "cypress", label: "cypress/** (Cypress tests & fixtures)" },
-  { path: "locales", label: "**/locales/** (Localization dictionaries)" },
-  { path: "i18n", label: "**/i18n/** (Translation files)" },
-  { path: "docs", label: "docs/** (Documentation markdown)" }
-];
 function detectIgnoreCandidates(projectRoot) {
   const root = path7.resolve(projectRoot);
-  const found = [];
-  for (const candidate of CANDIDATE_IGNORE_DIRS) {
-    const fullPath = path7.join(root, candidate.path);
-    if (fs7.existsSync(fullPath)) {
-      found.push({ ...candidate, exists: true });
+  const found = /* @__PURE__ */ new Map();
+  const directChecks = [
+    { pattern: ".github/skills", glob: ".github/skills/**", label: ".github/skills/** (AI agent skills)" },
+    { pattern: ".github/instructions", glob: ".github/instructions/**", label: ".github/instructions/** (AI instructions)" },
+    { pattern: ".github/prompts", glob: ".github/prompts/**", label: ".github/prompts/** (AI prompts)" },
+    { pattern: ".gemini/skills", glob: ".gemini/skills/**", label: ".gemini/skills/** (AI agent skills)" },
+    { pattern: ".claude/skills", glob: ".claude/skills/**", label: ".claude/skills/** (AI agent skills)" },
+    { pattern: "cypress", glob: "cypress/**", label: "cypress/** (Cypress tests & fixtures)" },
+    { pattern: "docs", glob: "docs/**", label: "docs/** (Documentation markdown)" }
+  ];
+  for (const check of directChecks) {
+    if (fs7.existsSync(path7.join(root, check.pattern))) {
+      found.set(check.glob, { path: check.glob, label: check.label, exists: true });
     }
   }
-  return found;
+  const targetDirNames = {
+    skills: { glob: "**/skills/**", label: "**/skills/** (AI agent skills)" },
+    fixtures: { glob: "**/fixtures/**", label: "**/fixtures/** (Test fixtures)" },
+    mocks: { glob: "**/mocks/**", label: "**/mocks/** (Mock data & stubs)" },
+    __snapshots__: { glob: "**/__snapshots__/**", label: "**/__snapshots__/** (Test snapshots)" },
+    e2e: { glob: "**/e2e/**", label: "**/e2e/** (End-to-end test suites)" },
+    locales: { glob: "**/locales/**", label: "**/locales/** (Localization dictionaries)" },
+    strings: { glob: "**/strings/**", label: "**/strings/** (Localization strings)" },
+    i18n: { glob: "**/i18n/**", label: "**/i18n/** (Translation files)" }
+  };
+  function scanDirs(dir, depth) {
+    if (depth > 3) return;
+    let entries;
+    try {
+      entries = fs7.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const name = entry.name.toLowerCase();
+        if (name === "node_modules" || name === ".git" || name === "dist" || name === "build" || name === ".code-search") {
+          continue;
+        }
+        if (targetDirNames[name]) {
+          const match = targetDirNames[name];
+          found.set(match.glob, { path: match.glob, label: match.label, exists: true });
+        }
+        scanDirs(path7.join(dir, entry.name), depth + 1);
+      }
+    }
+  }
+  scanDirs(root, 0);
+  return Array.from(found.values());
 }
 
 // src/cli/init.ts
@@ -2115,4 +2141,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-ZX3XZKIJ.js.map
+//# sourceMappingURL=chunk-TW6ZKPYI.js.map

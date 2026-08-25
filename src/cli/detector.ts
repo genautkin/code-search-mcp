@@ -77,32 +77,66 @@ export function detectProjectExtensions(
   };
 }
 
-const CANDIDATE_IGNORE_DIRS = [
-  { path: '.github/skills', label: '.github/skills/** (AI agent skills)' },
-  { path: '.github/instructions', label: '.github/instructions/** (AI system instructions)' },
-  { path: '.github/prompts', label: '.github/prompts/** (AI prompt templates)' },
-  { path: '.gemini/skills', label: '.gemini/skills/** (AI agent skills)' },
-  { path: '.claude/skills', label: '.claude/skills/** (AI agent skills)' },
-  { path: 'skills', label: 'skills/** (Agent skill definitions)' },
-  { path: 'fixtures', label: '**/fixtures/** (Test fixtures)' },
-  { path: 'mocks', label: '**/mocks/** (Mock data & stubs)' },
-  { path: 'e2e', label: '**/e2e/** (End-to-end test suites)' },
-  { path: 'cypress', label: 'cypress/** (Cypress tests & fixtures)' },
-  { path: 'locales', label: '**/locales/** (Localization dictionaries)' },
-  { path: 'i18n', label: '**/i18n/** (Translation files)' },
-  { path: 'docs', label: 'docs/** (Documentation markdown)' }
-];
-
 export function detectIgnoreCandidates(projectRoot: string): { path: string; label: string; exists: boolean }[] {
   const root = path.resolve(projectRoot);
-  const found: { path: string; label: string; exists: boolean }[] = [];
+  const found = new Map<string, { path: string; label: string; exists: boolean }>();
 
-  for (const candidate of CANDIDATE_IGNORE_DIRS) {
-    const fullPath = path.join(root, candidate.path);
-    if (fs.existsSync(fullPath)) {
-      found.push({ ...candidate, exists: true });
+  // 1. Direct path checks at project root
+  const directChecks = [
+    { pattern: '.github/skills', glob: '.github/skills/**', label: '.github/skills/** (AI agent skills)' },
+    { pattern: '.github/instructions', glob: '.github/instructions/**', label: '.github/instructions/** (AI instructions)' },
+    { pattern: '.github/prompts', glob: '.github/prompts/**', label: '.github/prompts/** (AI prompts)' },
+    { pattern: '.gemini/skills', glob: '.gemini/skills/**', label: '.gemini/skills/** (AI agent skills)' },
+    { pattern: '.claude/skills', glob: '.claude/skills/**', label: '.claude/skills/** (AI agent skills)' },
+    { pattern: 'cypress', glob: 'cypress/**', label: 'cypress/** (Cypress tests & fixtures)' },
+    { pattern: 'docs', glob: 'docs/**', label: 'docs/** (Documentation markdown)' }
+  ];
+
+  for (const check of directChecks) {
+    if (fs.existsSync(path.join(root, check.pattern))) {
+      found.set(check.glob, { path: check.glob, label: check.label, exists: true });
     }
   }
 
-  return found;
+  // 2. Fast shallow scan (depth <= 3) for nested common noisy directories
+  const targetDirNames: Record<string, { glob: string; label: string }> = {
+    skills: { glob: '**/skills/**', label: '**/skills/** (AI agent skills)' },
+    fixtures: { glob: '**/fixtures/**', label: '**/fixtures/** (Test fixtures)' },
+    mocks: { glob: '**/mocks/**', label: '**/mocks/** (Mock data & stubs)' },
+    __snapshots__: { glob: '**/__snapshots__/**', label: '**/__snapshots__/** (Test snapshots)' },
+    e2e: { glob: '**/e2e/**', label: '**/e2e/** (End-to-end test suites)' },
+    locales: { glob: '**/locales/**', label: '**/locales/** (Localization dictionaries)' },
+    strings: { glob: '**/strings/**', label: '**/strings/** (Localization strings)' },
+    i18n: { glob: '**/i18n/**', label: '**/i18n/** (Translation files)' }
+  };
+
+  function scanDirs(dir: string, depth: number) {
+    if (depth > 3) return;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const name = entry.name.toLowerCase();
+        if (name === 'node_modules' || name === '.git' || name === 'dist' || name === 'build' || name === '.code-search') {
+          continue;
+        }
+
+        if (targetDirNames[name]) {
+          const match = targetDirNames[name];
+          found.set(match.glob, { path: match.glob, label: match.label, exists: true });
+        }
+
+        scanDirs(path.join(dir, entry.name), depth + 1);
+      }
+    }
+  }
+
+  scanDirs(root, 0);
+
+  return Array.from(found.values());
 }

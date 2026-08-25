@@ -54,4 +54,24 @@ describe('detectProjectExtensions', () => {
     expect(result.counts['.ts']).toBe(3);
     expect(result.counts['.md']).toBe(1);
   });
+
+  it('detects existing candidate ignore directories and excludes non-existent ones', async () => {
+    const { detectIgnoreCandidates } = await import('../../src/cli/detector.js');
+
+    // Create some candidate directories
+    fs.mkdirSync(path.join(tempDir, '.github', 'skills'), { recursive: true });
+    fs.mkdirSync(path.join(tempDir, 'src', 'locales'), { recursive: true });
+    fs.mkdirSync(path.join(tempDir, 'tests', 'fixtures'), { recursive: true });
+
+    const candidates = detectIgnoreCandidates(tempDir);
+    const paths = candidates.map(c => c.path);
+
+    expect(paths).toContain('.github/skills/**');
+    expect(paths).toContain('**/locales/**');
+    expect(paths).toContain('**/fixtures/**');
+
+    // Shouldn't contain folders that don't exist (e.g. cypress, mocks)
+    expect(paths).not.toContain('cypress/**');
+    expect(paths).not.toContain('**/mocks/**');
+  });
 });
