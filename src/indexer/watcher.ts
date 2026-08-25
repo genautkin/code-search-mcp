@@ -18,7 +18,7 @@ export class FileWatcher {
     this.config = config;
     this.worker = worker;
     this.supportedExts = new Set(config.supportedExtensions.map((e) => e.toLowerCase()));
-    this.matcher = createIgnoreMatcher(config.projectRoot, config.customExcludes);
+    this.matcher = createIgnoreMatcher(config.projectRoot, config.customExcludes, config.respectGitignore);
   }
 
   private readyPromise: Promise<void> | null = null;

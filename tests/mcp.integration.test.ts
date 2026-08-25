@@ -25,6 +25,8 @@ describe('MCP Server Integration', () => {
 }`
     );
 
+    fs.writeFileSync(path.join(tempDir, '.codesearchrc.json'), JSON.stringify({ version: 1 }));
+
     const config = loadConfig(tempDir);
     serverInstance = await createMcpServer(config);
 

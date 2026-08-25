@@ -212,7 +212,7 @@ declare class FileWatcher {
     stop(): Promise<void>;
 }
 
-declare function createMcpServer(config: CodeSearchConfig): Promise<{
+declare function createMcpServer(initialConfig: CodeSearchConfig): Promise<{
     server: Server;
     worker: IndexerWorker;
     watcher: FileWatcher;

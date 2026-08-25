@@ -7,18 +7,25 @@ import {
 import { IndexerWorker } from '../indexer/worker.js';
 import { FileWatcher } from '../indexer/watcher.js';
 import { CodeSearchConfig } from '../types.js';
+import { isProjectInitialized, loadConfig } from '../config/loader.js';
+import { runInit } from '../cli/init.js';
 
-export async function createMcpServer(config: CodeSearchConfig): Promise<{
+export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<{
   server: Server;
   worker: IndexerWorker;
   watcher: FileWatcher;
   start: () => Promise<void>;
   stop: () => Promise<void>;
 }> {
-  const worker = new IndexerWorker(config);
-  await worker.init();
+  let currentConfig = initialConfig;
+  let isInit = isProjectInitialized(currentConfig.projectRoot);
 
-  const watcher = new FileWatcher(config, worker);
+  let worker = new IndexerWorker(currentConfig);
+  let watcher = new FileWatcher(currentConfig, worker);
+
+  if (isInit) {
+    await worker.init();
+  }
 
   const server = new Server(
     {
@@ -90,6 +97,29 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
           }
         },
         {
+          name: 'code_search_init',
+          description:
+            'Initialize semantic search for the project (creates .codesearchrc.json, .codesearchignore, and builds index).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              indexPath: {
+                type: 'string',
+                description: 'Optional custom index storage path (default: node_modules/.cache/code-search/lancedb or .code-search/lancedb)'
+              },
+              respectGitignore: {
+                type: 'boolean',
+                description: 'Whether to skip files listed in .gitignore (default: true)'
+              },
+              supportedExtensions: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'List of file extensions to index (e.g. [".ts", ".tsx", ".py", ".md"])'
+              }
+            }
+          }
+        },
+        {
           name: 'code_search_guide',
           description:
             'Get best practices and usage instructions for AI agents on how and when to use code_search.',
@@ -105,6 +135,34 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
+    if (name === 'code_search_init') {
+      await runInit({
+        projectRoot: currentConfig.projectRoot,
+        yes: true,
+        indexPath: typeof args?.indexPath === 'string' ? args.indexPath : undefined,
+        respectGitignore: typeof args?.respectGitignore === 'boolean' ? args.respectGitignore : undefined,
+        supportedExtensions: Array.isArray(args?.supportedExtensions) ? (args.supportedExtensions as string[]) : undefined,
+        skipIndex: false
+      });
+
+      // Reload config & worker
+      currentConfig = loadConfig(currentConfig.projectRoot);
+      isInit = true;
+      worker = new IndexerWorker(currentConfig);
+      await worker.init();
+      watcher = new FileWatcher(currentConfig, worker);
+      await watcher.start();
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `✅ Code search initialized successfully in ${currentConfig.projectRoot}.\nIndex path: ${currentConfig.dbPath}\nInitial indexing completed.`
+          }
+        ]
+      };
+    }
+
     if (name === 'code_search_guide') {
       const guideText = `# Semantic Code Search — AI Agent Guide
 
@@ -112,38 +170,13 @@ export async function createMcpServer(config: CodeSearchConfig): Promise<{
 - Use \`code_search\` FIRST whenever looking for features, domain logic, workflows, UI components, or concepts described in natural language (e.g. "where are authentication tokens refreshed", "shopping cart discount formula", "dark mode toggle component").
 - Use \`code_search\` when you DO NOT know the exact variable or function name.
 
+## Initialization:
+- If this repository is not initialized, run the \`code_search_init\` tool or ask the user to run \`npx code-search-mcp init\`.
+
 ## Filtering Options:
 - **\`codeOnly: true\`**: Exclude markdown specs/guides to find pure code calculation implementations directly.
 - **\`pathFilter\`**: Restrict search to specific feature areas (e.g. \`pathFilter: "src/auth"\` or \`pathFilter: "src/billing"\`).
 - **\`language\`**: Restrict results by language (e.g. \`language: "typescript"\`, \`"vue"\`, \`"javascript"\`).
-
-## How to Configure Ignore / Exclusions:
-To exclude files, directories, or assets from being indexed in this repository:
-
-1. **\`.codesearchignore\` (Recommended for search exclusions)**:
-   Create a \`.codesearchignore\` file in the project root with glob patterns (standard gitignore syntax):
-   \`\`\`gitignore
-   # Ignore assets and fixtures
-   src/assets/**
-   tests/fixtures/**
-   legacy/**
-   *.spec.ts
-   \`\`\`
-
-2. **\`.gitignore\` & \`.ignore\`**:
-   Any patterns in \`.gitignore\` or \`.ignore\` in the project root are automatically honored.
-
-3. **\`.codesearchrc.json\` (Full repository configuration)**:
-   Create a \`.codesearchrc.json\` file in the project root:
-   \`\`\`json
-   {
-     "customExcludes": ["src/assets/**", "fixtures/**"],
-     "supportedExtensions": [".ts", ".tsx", ".js", ".vue"],
-     "maxFileSizeKb": 500
-   }
-   \`\`\`
-
-*Note: After adding or changing ignore rules, run \`code_search_reindex({ forceFull: true })\` to rebuild the index.*
 
 ## When to Use Other Tools Instead:
 - Use **CodeGraph (\`codegraph_explore\`)** when navigating a known symbol's references, call hierarchy, or type definitions.
@@ -160,6 +193,17 @@ To exclude files, directories, or assets from being indexed in this repository:
     }
 
     if (name === 'code_search') {
+      if (!isInit) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `ℹ️ Semantic code search is not initialized for this project (${currentConfig.projectRoot}).\n\nTo enable semantic search:\n1. Call the 'code_search_init' tool, OR\n2. Run 'npx code-search-mcp init' in the project root.`
+            }
+          ]
+        };
+      }
+
       const query = (args?.query as string) || '';
       const limit = typeof args?.limit === 'number' ? args.limit : 10;
       const pathFilter = typeof args?.pathFilter === 'string' ? args.pathFilter : undefined;
@@ -195,6 +239,17 @@ To exclude files, directories, or assets from being indexed in this repository:
     }
 
     if (name === 'code_search_status') {
+      if (!isInit) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Index Status: UNINITIALIZED\nProject ${currentConfig.projectRoot} is not initialized. Run code_search_init to begin.`
+            }
+          ]
+        };
+      }
+
       const status = worker.getStatus();
       const text = [
         `Index Status: ${status.state.toUpperCase()}`,
@@ -219,8 +274,18 @@ To exclude files, directories, or assets from being indexed in this repository:
     }
 
     if (name === 'code_search_reindex') {
+      if (!isInit) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Project is not initialized. Run code_search_init first.`
+            }
+          ]
+        };
+      }
+
       const forceFull = Boolean(args?.forceFull);
-      // Run in background without blocking tool response
       worker.startIndexing(forceFull).catch((err) => {
         console.error('[code-search-mcp] Reindex error:', err);
       });
@@ -242,13 +307,15 @@ To exclude files, directories, or assets from being indexed in this repository:
     const transport = new StdioServerTransport();
     await server.connect(transport);
 
-    // Start background file watcher
-    await watcher.start();
+    if (isInit) {
+      // Start background file watcher
+      await watcher.start();
 
-    // Start initial background indexing
-    worker.startIndexing().catch((err) => {
-      console.error('[code-search-mcp] Initial background index failed:', err);
-    });
+      // Start initial background indexing
+      worker.startIndexing().catch((err) => {
+        console.error('[code-search-mcp] Initial background index failed:', err);
+      });
+    }
   };
 
   const stop = async () => {

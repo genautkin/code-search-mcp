@@ -536,7 +536,7 @@ var VectorStore = class {
         if (isConflict && attempt < maxRetries) {
           attempt++;
           const delay = 50 * Math.pow(2, attempt) + Math.floor(Math.random() * 50);
-          await new Promise((resolve3) => setTimeout(resolve3, delay));
+          await new Promise((resolve5) => setTimeout(resolve5, delay));
           if (this.db) {
             try {
               this.table = await this.db.openTable(TABLE_NAME);
@@ -1287,12 +1287,12 @@ var FileWatcher = class {
     this.config = config;
     this.worker = worker;
     this.supportedExts = new Set(config.supportedExtensions.map((e) => e.toLowerCase()));
-    this.matcher = createIgnoreMatcher(config.projectRoot, config.customExcludes);
+    this.matcher = createIgnoreMatcher(config.projectRoot, config.customExcludes, config.respectGitignore);
   }
   readyPromise = null;
   async start() {
     if (this.watcher) return;
-    this.readyPromise = new Promise((resolve3) => {
+    this.readyPromise = new Promise((resolve5) => {
       this.watcher = chokidar.watch(this.config.projectRoot, {
         ignored: (filePath, stats) => {
           const rel = normalizePath(path6.relative(this.config.projectRoot, filePath));
@@ -1304,7 +1304,7 @@ var FileWatcher = class {
         ignoreInitial: true
       });
       this.watcher.on("ready", () => {
-        resolve3();
+        resolve5();
       });
       this.watcher.on("add", (filePath) => this.handleFileChange(filePath));
       this.watcher.on("change", (filePath) => this.handleFileChange(filePath));
@@ -1370,6 +1370,263 @@ var FileWatcher = class {
   }
 };
 
+// src/cli/init.ts
+import * as fs8 from "fs";
+import * as path8 from "path";
+import { select, confirm, input } from "@inquirer/prompts";
+
+// src/cli/detector.ts
+import * as fs7 from "fs";
+import * as path7 from "path";
+var KNOWN_CODE_EXTENSIONS = /* @__PURE__ */ new Set([
+  ...DEFAULT_EXTENSIONS,
+  ".html",
+  ".htm",
+  ".xml",
+  ".svg",
+  ".css",
+  ".scss",
+  ".sass",
+  ".less",
+  ".json5",
+  ".jsonc",
+  ".env",
+  ".dockerfile",
+  ".makefile",
+  ".tf",
+  ".hcl",
+  ".zig",
+  ".nim",
+  ".lua",
+  ".perl",
+  ".pl",
+  ".r",
+  ".ex",
+  ".exs",
+  ".erl",
+  ".clj",
+  ".lisp"
+]);
+function detectProjectExtensions(projectRoot, options = {}) {
+  const canonicalRoot = path7.resolve(projectRoot);
+  const respectGitignore = options.respectGitignore ?? true;
+  const maxFiles = options.maxFilesToSample ?? 5e4;
+  const matcher = createIgnoreMatcher(canonicalRoot, [], respectGitignore);
+  const counts = {};
+  let totalFiles = 0;
+  function walk(currentDir) {
+    if (totalFiles >= maxFiles) return;
+    let entries;
+    try {
+      entries = fs7.readdirSync(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (totalFiles >= maxFiles) break;
+      const fullPath = path7.join(currentDir, entry.name);
+      const relPath = normalizePath(path7.relative(canonicalRoot, fullPath));
+      const isDir = entry.isDirectory();
+      if (matcher.ignores(relPath, isDir)) {
+        continue;
+      }
+      if (isDir) {
+        walk(fullPath);
+      } else if (entry.isFile()) {
+        const ext = path7.extname(entry.name).toLowerCase();
+        if (ext && KNOWN_CODE_EXTENSIONS.has(ext)) {
+          counts[ext] = (counts[ext] || 0) + 1;
+          totalFiles++;
+        }
+      }
+    }
+  }
+  walk(canonicalRoot);
+  const sortedExtensions = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  const finalExtensions = sortedExtensions.length > 0 ? sortedExtensions : DEFAULT_EXTENSIONS;
+  return {
+    extensions: finalExtensions,
+    counts,
+    totalFiles
+  };
+}
+
+// src/cli/init.ts
+async function runInit(options = {}) {
+  const targetDir = options.projectRoot ? path8.resolve(options.projectRoot) : findProjectRoot(process.cwd());
+  let canonicalRoot = targetDir;
+  try {
+    canonicalRoot = fs8.realpathSync(targetDir);
+  } catch {
+  }
+  const isInteractive = !options.yes;
+  const alreadyInitialized = isProjectInitialized(canonicalRoot);
+  if (isInteractive) {
+    console.log("\n\u{1F50D} code-search-mcp Project Initialization\n");
+  }
+  let cleanExisting = options.clean ?? false;
+  if (alreadyInitialized && isInteractive && !options.clean) {
+    cleanExisting = await confirm({
+      message: "Existing configuration or index detected. Clean and rebuild from scratch?",
+      default: false
+    });
+  }
+  const hasNodeModules = fs8.existsSync(path8.join(canonicalRoot, "node_modules"));
+  let chosenIndexPath = options.indexPath;
+  if (!chosenIndexPath) {
+    if (isInteractive) {
+      const choices = [];
+      if (hasNodeModules) {
+        choices.push({
+          name: "node_modules/.cache/code-search/lancedb (Recommended: zero git noise)",
+          value: "node_modules/.cache/code-search/lancedb"
+        });
+      }
+      choices.push({
+        name: ".code-search/lancedb (Standard root directory)",
+        value: ".code-search/lancedb"
+      });
+      choices.push({
+        name: "Custom directory path...",
+        value: "__CUSTOM__"
+      });
+      const selected = await select({
+        message: "Where should the vector database index be stored?",
+        choices
+      });
+      if (selected === "__CUSTOM__") {
+        chosenIndexPath = await input({
+          message: "Enter custom index path (relative to project root or absolute):",
+          default: ".code-search/lancedb"
+        });
+      } else {
+        chosenIndexPath = selected;
+      }
+    } else {
+      chosenIndexPath = hasNodeModules ? "node_modules/.cache/code-search/lancedb" : ".code-search/lancedb";
+    }
+  }
+  let respectGitignore = options.respectGitignore ?? true;
+  if (isInteractive && options.respectGitignore === void 0) {
+    respectGitignore = await confirm({
+      message: "Skip indexing files listed in your project's .gitignore?",
+      default: true
+    });
+  }
+  let createIgnoreFile = options.createIgnoreFile ?? true;
+  if (isInteractive && options.createIgnoreFile === void 0) {
+    createIgnoreFile = await confirm({
+      message: "Create a .codesearchignore file with recommended excludes (fixtures, mocks, minified code)?",
+      default: true
+    });
+  }
+  let supportedExtensions = options.supportedExtensions;
+  if (!supportedExtensions) {
+    const detected = detectProjectExtensions(canonicalRoot, { respectGitignore });
+    if (isInteractive) {
+      const detectedSummary = Object.entries(detected.counts).slice(0, 8).map(([ext, count]) => `${ext} (${count} files)`).join(", ");
+      if (detectedSummary) {
+        console.log(`
+\u{1F4C1} Detected file types in project: ${detectedSummary}
+`);
+      }
+      const action = await select({
+        message: "Which file extensions should code-search index?",
+        choices: [
+          {
+            name: `Use detected extensions (${detected.extensions.slice(0, 10).join(", ")}${detected.extensions.length > 10 ? "..." : ""})`,
+            value: "detected"
+          },
+          {
+            name: "Customize extension list manually",
+            value: "custom"
+          }
+        ]
+      });
+      if (action === "custom") {
+        const rawInput = await input({
+          message: "Enter comma-separated file extensions to index (e.g. .ts, .tsx, .py, .md):",
+          default: detected.extensions.join(", ")
+        });
+        supportedExtensions = rawInput.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).map((e) => e.startsWith(".") ? e : `.${e}`);
+      } else {
+        supportedExtensions = detected.extensions;
+      }
+    } else {
+      supportedExtensions = detected.extensions.length > 0 ? detected.extensions : DEFAULT_EXTENSIONS;
+    }
+  }
+  if (cleanExisting) {
+    const fullDbPath = path8.isAbsolute(chosenIndexPath) ? chosenIndexPath : path8.join(canonicalRoot, chosenIndexPath);
+    if (fs8.existsSync(fullDbPath)) {
+      try {
+        fs8.rmSync(fullDbPath, { recursive: true, force: true });
+      } catch {
+      }
+    }
+  }
+  const gitignorePath = path8.join(canonicalRoot, ".gitignore");
+  if (fs8.existsSync(gitignorePath)) {
+    try {
+      const gitignoreContent = fs8.readFileSync(gitignorePath, "utf8");
+      const relIndexPath = chosenIndexPath.replace(/\\/g, "/");
+      if (!relIndexPath.startsWith("node_modules") && !gitignoreContent.includes(".code-search")) {
+        const toAppend = "\n# code-search vector database index\n.code-search/\n";
+        fs8.appendFileSync(gitignorePath, toAppend, "utf8");
+        if (isInteractive) {
+          console.log("\u{1F6E1} Added .code-search/ to .gitignore");
+        }
+      }
+    } catch {
+    }
+  }
+  const rcPath = path8.join(canonicalRoot, ".codesearchrc.json");
+  const rcContent = {
+    $schema: "https://raw.githubusercontent.com/genautkin/code-search-mcp/main/schema.json",
+    version: 1,
+    indexPath: chosenIndexPath,
+    respectGitignore,
+    supportedExtensions,
+    customExcludes: [],
+    maxFileSizeKb: DEFAULT_CONFIG.maxFileSizeKb,
+    embeddingModel: DEFAULT_CONFIG.embeddingModel
+  };
+  fs8.writeFileSync(rcPath, JSON.stringify(rcContent, null, 2) + "\n", "utf8");
+  if (isInteractive) {
+    console.log(`\u2705 Saved configuration to ${rcPath}`);
+  }
+  const ignoreFilePath = path8.join(canonicalRoot, ".codesearchignore");
+  if (createIgnoreFile && !fs8.existsSync(ignoreFilePath)) {
+    fs8.writeFileSync(ignoreFilePath, RECOMMENDED_CODESEARCHIGNORE, "utf8");
+    if (isInteractive) {
+      console.log(`\u2705 Created ${ignoreFilePath}`);
+    }
+  }
+  let shouldIndex = !options.skipIndex;
+  if (isInteractive && options.skipIndex === void 0) {
+    shouldIndex = await confirm({
+      message: "Start building search index now?",
+      default: true
+    });
+  }
+  if (shouldIndex) {
+    if (isInteractive) {
+      console.log("\n\u{1F680} Starting initial indexing...");
+    }
+    const config = loadConfig(canonicalRoot);
+    const worker = new IndexerWorker(config);
+    await worker.init();
+    await worker.startIndexing(cleanExisting);
+    if (isInteractive) {
+      const status = worker.getStatus();
+      console.log(`\u2728 Initial indexing completed! (${status.indexedFiles} files, ${status.indexedChunks} chunks indexed)
+`);
+    }
+  } else if (isInteractive) {
+    console.log("\n\u{1F389} Setup complete! Run `npx code-search-mcp index` whenever you are ready to index.\n");
+  }
+}
+
 // src/server/mcp.ts
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -1377,10 +1634,14 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
-async function createMcpServer(config) {
-  const worker = new IndexerWorker(config);
-  await worker.init();
-  const watcher = new FileWatcher(config, worker);
+async function createMcpServer(initialConfig) {
+  let currentConfig = initialConfig;
+  let isInit = isProjectInitialized(currentConfig.projectRoot);
+  let worker = new IndexerWorker(currentConfig);
+  let watcher = new FileWatcher(currentConfig, worker);
+  if (isInit) {
+    await worker.init();
+  }
   const server = new Server(
     {
       name: "code-search-mcp",
@@ -1447,6 +1708,28 @@ async function createMcpServer(config) {
           }
         },
         {
+          name: "code_search_init",
+          description: "Initialize semantic search for the project (creates .codesearchrc.json, .codesearchignore, and builds index).",
+          inputSchema: {
+            type: "object",
+            properties: {
+              indexPath: {
+                type: "string",
+                description: "Optional custom index storage path (default: node_modules/.cache/code-search/lancedb or .code-search/lancedb)"
+              },
+              respectGitignore: {
+                type: "boolean",
+                description: "Whether to skip files listed in .gitignore (default: true)"
+              },
+              supportedExtensions: {
+                type: "array",
+                items: { type: "string" },
+                description: 'List of file extensions to index (e.g. [".ts", ".tsx", ".py", ".md"])'
+              }
+            }
+          }
+        },
+        {
           name: "code_search_guide",
           description: "Get best practices and usage instructions for AI agents on how and when to use code_search.",
           inputSchema: {
@@ -1459,6 +1742,32 @@ async function createMcpServer(config) {
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    if (name === "code_search_init") {
+      await runInit({
+        projectRoot: currentConfig.projectRoot,
+        yes: true,
+        indexPath: typeof args?.indexPath === "string" ? args.indexPath : void 0,
+        respectGitignore: typeof args?.respectGitignore === "boolean" ? args.respectGitignore : void 0,
+        supportedExtensions: Array.isArray(args?.supportedExtensions) ? args.supportedExtensions : void 0,
+        skipIndex: false
+      });
+      currentConfig = loadConfig(currentConfig.projectRoot);
+      isInit = true;
+      worker = new IndexerWorker(currentConfig);
+      await worker.init();
+      watcher = new FileWatcher(currentConfig, worker);
+      await watcher.start();
+      return {
+        content: [
+          {
+            type: "text",
+            text: `\u2705 Code search initialized successfully in ${currentConfig.projectRoot}.
+Index path: ${currentConfig.dbPath}
+Initial indexing completed.`
+          }
+        ]
+      };
+    }
     if (name === "code_search_guide") {
       const guideText = `# Semantic Code Search \u2014 AI Agent Guide
 
@@ -1466,38 +1775,13 @@ async function createMcpServer(config) {
 - Use \`code_search\` FIRST whenever looking for features, domain logic, workflows, UI components, or concepts described in natural language (e.g. "where are authentication tokens refreshed", "shopping cart discount formula", "dark mode toggle component").
 - Use \`code_search\` when you DO NOT know the exact variable or function name.
 
+## Initialization:
+- If this repository is not initialized, run the \`code_search_init\` tool or ask the user to run \`npx code-search-mcp init\`.
+
 ## Filtering Options:
 - **\`codeOnly: true\`**: Exclude markdown specs/guides to find pure code calculation implementations directly.
 - **\`pathFilter\`**: Restrict search to specific feature areas (e.g. \`pathFilter: "src/auth"\` or \`pathFilter: "src/billing"\`).
 - **\`language\`**: Restrict results by language (e.g. \`language: "typescript"\`, \`"vue"\`, \`"javascript"\`).
-
-## How to Configure Ignore / Exclusions:
-To exclude files, directories, or assets from being indexed in this repository:
-
-1. **\`.codesearchignore\` (Recommended for search exclusions)**:
-   Create a \`.codesearchignore\` file in the project root with glob patterns (standard gitignore syntax):
-   \`\`\`gitignore
-   # Ignore assets and fixtures
-   src/assets/**
-   tests/fixtures/**
-   legacy/**
-   *.spec.ts
-   \`\`\`
-
-2. **\`.gitignore\` & \`.ignore\`**:
-   Any patterns in \`.gitignore\` or \`.ignore\` in the project root are automatically honored.
-
-3. **\`.codesearchrc.json\` (Full repository configuration)**:
-   Create a \`.codesearchrc.json\` file in the project root:
-   \`\`\`json
-   {
-     "customExcludes": ["src/assets/**", "fixtures/**"],
-     "supportedExtensions": [".ts", ".tsx", ".js", ".vue"],
-     "maxFileSizeKb": 500
-   }
-   \`\`\`
-
-*Note: After adding or changing ignore rules, run \`code_search_reindex({ forceFull: true })\` to rebuild the index.*
 
 ## When to Use Other Tools Instead:
 - Use **CodeGraph (\`codegraph_explore\`)** when navigating a known symbol's references, call hierarchy, or type definitions.
@@ -1512,6 +1796,20 @@ To exclude files, directories, or assets from being indexed in this repository:
       };
     }
     if (name === "code_search") {
+      if (!isInit) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `\u2139\uFE0F Semantic code search is not initialized for this project (${currentConfig.projectRoot}).
+
+To enable semantic search:
+1. Call the 'code_search_init' tool, OR
+2. Run 'npx code-search-mcp init' in the project root.`
+            }
+          ]
+        };
+      }
       const query = args?.query || "";
       const limit = typeof args?.limit === "number" ? args.limit : 10;
       const pathFilter = typeof args?.pathFilter === "string" ? args.pathFilter : void 0;
@@ -1543,6 +1841,17 @@ To exclude files, directories, or assets from being indexed in this repository:
       };
     }
     if (name === "code_search_status") {
+      if (!isInit) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Index Status: UNINITIALIZED
+Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to begin.`
+            }
+          ]
+        };
+      }
       const status = worker.getStatus();
       const text = [
         `Index Status: ${status.state.toUpperCase()}`,
@@ -1563,6 +1872,16 @@ To exclude files, directories, or assets from being indexed in this repository:
       };
     }
     if (name === "code_search_reindex") {
+      if (!isInit) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Project is not initialized. Run code_search_init first.`
+            }
+          ]
+        };
+      }
       const forceFull = Boolean(args?.forceFull);
       worker.startIndexing(forceFull).catch((err) => {
         console.error("[code-search-mcp] Reindex error:", err);
@@ -1581,10 +1900,12 @@ To exclude files, directories, or assets from being indexed in this repository:
   const start = async () => {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    await watcher.start();
-    worker.startIndexing().catch((err) => {
-      console.error("[code-search-mcp] Initial background index failed:", err);
-    });
+    if (isInit) {
+      await watcher.start();
+      worker.startIndexing().catch((err) => {
+        console.error("[code-search-mcp] Initial background index failed:", err);
+      });
+    }
   };
   const stop = async () => {
     await watcher.stop();
@@ -1619,6 +1940,7 @@ export {
   scanDirectory,
   IndexerWorker,
   FileWatcher,
+  runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-MXBAQQHV.js.map
+//# sourceMappingURL=chunk-2EER2VDI.js.map
