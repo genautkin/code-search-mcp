@@ -9,27 +9,17 @@ Works out-of-the-box with **Claude Code**, **Gemini CLI**, **Antigravity (`agy`)
 
 ## ⚡️ Quick Start
 
-### 1. Initialize your project
-Run the interactive setup wizard in any repository:
-
+### 1. Install Globally (Recommended)
 ```bash
-npx code-search-mcp init
+npm install -g github:genautkin/code-search-mcp
 ```
-
-The wizard asks:
-- **Where to store the index** (`node_modules/.cache/code-search/lancedb` for zero git noise, or `.code-search/lancedb`, or custom)
-- **Skip indexing files in `.gitignore`** (`Yes` / `No`)
-- **Create `.codesearchignore`** with recommended excludes (`Yes` / `No`)
-- **Auto-detected file types**: Reviews detected extensions in your repo and lets you customize the list
-- **Start initial index immediately** (`Yes` / `No`)
-
-*(Or pass `-y` to skip questions and use smart defaults: `npx code-search-mcp init -y`)*
+*(Or use on-demand without installing: `npx github:genautkin/code-search-mcp init`)*
 
 ---
 
 ### 2. Connect It to Your AI Client
 
-Because `code-search-mcp` works as a global or local MCP server, configure your AI host:
+Configure your AI assistant once to enable `code-search`:
 
 #### 🧠 Claude Code
 ```bash
@@ -81,6 +71,24 @@ Add to `.cursor/mcp.json` (or `claude_desktop_config.json`):
   }
 }
 ```
+
+---
+
+### 3. Initialize your project
+Run the interactive setup wizard in any repository:
+
+```bash
+code-search-mcp init
+```
+
+The wizard asks:
+- **Where to store the index** (`node_modules/.cache/code-search/lancedb` for zero git noise, or `.code-search/lancedb`, or custom)
+- **Skip indexing files in `.gitignore`** (`Yes` / `No`)
+- **Create `.codesearchignore`** with recommended excludes (`Yes` / `No`)
+- **Auto-detected file types**: Reviews detected extensions in your repo and lets you customize the list
+- **Start initial index immediately** (`Yes` / `No`)
+
+*(Or pass `-y` to skip questions and use smart defaults: `code-search-mcp init -y`)*
 
 ---
 
