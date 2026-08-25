@@ -6,7 +6,7 @@ import {
   isProjectInitialized,
   loadConfig,
   runInit
-} from "../chunk-I5CORWU2.js";
+} from "../chunk-W6UCGGNB.js";
 
 // bin/cli.ts
 import { Command } from "commander";
@@ -318,6 +318,16 @@ program.command("search <query>").description("Execute a semantic search query d
     process.exit(1);
   }
 });
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught exception in code-search-mcp process", { error: String(err), stack: err?.stack });
+  process.stderr.write(`[code-search-mcp] Uncaught exception: ${err}
+`);
+});
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled rejection in code-search-mcp process", { reason: String(reason) });
+  process.stderr.write(`[code-search-mcp] Unhandled rejection: ${reason}
+`);
+});
 program.option("-p, --path <path>", "Project root directory to index and search").option("-m, --model <model>", "Embedding model (default: Xenova/all-MiniLM-L6-v2)").action(async (options) => {
   try {
     const targetDir = options.path ? path6.resolve(options.path) : findProjectRoot(process.cwd());
@@ -337,17 +347,19 @@ program.option("-p, --path <path>", "Project root directory to index and search"
     process.stderr.write(`[code-search-mcp] Database path: ${config.dbPath}
 `);
     const { start, stop } = await createMcpServer(config);
-    const handleExit = () => {
+    let isExiting = false;
+    const handleExit = async () => {
+      if (isExiting) return;
+      isExiting = true;
       try {
         logger.info("Stopping code-search-mcp session", { pid: process.pid });
+        await stop();
       } catch {
       }
       process.exit(0);
     };
     process.on("SIGINT", handleExit);
     process.on("SIGTERM", handleExit);
-    process.stdin.on("close", handleExit);
-    process.stdin.on("end", handleExit);
     await start();
     logger.info("MCP Server started on stdio");
     process.stderr.write(`[code-search-mcp] MCP Server running on stdio.

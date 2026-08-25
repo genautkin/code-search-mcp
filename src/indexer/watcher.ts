@@ -42,6 +42,10 @@ export class FileWatcher {
         resolve();
       });
 
+      this.watcher.on('error', (err: any) => {
+        console.warn('[code-search-mcp] File watcher encountered error:', err?.message || err);
+      });
+
       this.watcher.on('add', (filePath: string) => this.handleFileChange(filePath));
       this.watcher.on('change', (filePath: string) => this.handleFileChange(filePath));
       this.watcher.on('unlink', (filePath: string) => this.handleFileUnlink(filePath));

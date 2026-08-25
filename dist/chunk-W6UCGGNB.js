@@ -1417,6 +1417,9 @@ var FileWatcher = class {
       this.watcher.on("ready", () => {
         resolve5();
       });
+      this.watcher.on("error", (err) => {
+        console.warn("[code-search-mcp] File watcher encountered error:", err?.message || err);
+      });
       this.watcher.on("add", (filePath) => this.handleFileChange(filePath));
       this.watcher.on("change", (filePath) => this.handleFileChange(filePath));
       this.watcher.on("unlink", (filePath) => this.handleFileUnlink(filePath));
@@ -2132,4 +2135,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-I5CORWU2.js.map
+//# sourceMappingURL=chunk-W6UCGGNB.js.map
