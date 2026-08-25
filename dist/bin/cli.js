@@ -6,7 +6,7 @@ import {
   isProjectInitialized,
   loadConfig,
   runInit
-} from "../chunk-VGHYOBPR.js";
+} from "../chunk-CEBA2H63.js";
 
 // bin/cli.ts
 import { Command } from "commander";

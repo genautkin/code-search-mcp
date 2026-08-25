@@ -1624,11 +1624,14 @@ async function runInit(options = {}) {
     await worker.startIndexing(cleanExisting);
     if (isInteractive) {
       const status = worker.getStatus();
-      console.log(`\u2728 Initial indexing completed! (${status.indexedFiles} files, ${status.indexedChunks} chunks indexed)
+      console.log(`\u2728 Initial indexing completed! (${status.indexedFiles} files, ${status.indexedChunks} chunks indexed)`);
+      console.log(`\u{1F4A1} Tip: You can change your configuration anytime by editing .codesearchrc.json or .codesearchignore.
 `);
     }
   } else if (isInteractive) {
-    console.log("\n\u{1F389} Setup complete! Run `npx code-search-mcp index` whenever you are ready to index.\n");
+    console.log("\n\u{1F389} Setup complete! Run `code-search-mcp index` whenever you are ready to index.");
+    console.log(`\u{1F4A1} Tip: You can change your configuration anytime by editing .codesearchrc.json or .codesearchignore.
+`);
   }
 }
 
@@ -1948,4 +1951,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-VGHYOBPR.js.map
+//# sourceMappingURL=chunk-CEBA2H63.js.map

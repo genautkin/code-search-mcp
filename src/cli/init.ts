@@ -217,9 +217,11 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
 
     if (isInteractive) {
       const status = worker.getStatus();
-      console.log(`✨ Initial indexing completed! (${status.indexedFiles} files, ${status.indexedChunks} chunks indexed)\n`);
+      console.log(`✨ Initial indexing completed! (${status.indexedFiles} files, ${status.indexedChunks} chunks indexed)`);
+      console.log(`💡 Tip: You can change your configuration anytime by editing .codesearchrc.json or .codesearchignore.\n`);
     }
   } else if (isInteractive) {
-    console.log('\n🎉 Setup complete! Run `npx code-search-mcp index` whenever you are ready to index.\n');
+    console.log('\n🎉 Setup complete! Run `code-search-mcp index` whenever you are ready to index.');
+    console.log(`💡 Tip: You can change your configuration anytime by editing .codesearchrc.json or .codesearchignore.\n`);
   }
 }
