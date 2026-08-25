@@ -141,6 +141,7 @@ declare class VectorStore {
     searchVector(queryVector: number[], limit?: number): Promise<SearchResult[]>;
     searchLexical(queryText: string, limit?: number): Promise<SearchResult[]>;
     searchHybrid(queryVector: number[], queryText: string, limit?: number): Promise<SearchResult[]>;
+    private normalizeLanguage;
     private applyFilters;
     search(queryVector: number[], options?: number | SearchOptions, queryText?: string): Promise<SearchResult[]>;
     count(): Promise<number>;

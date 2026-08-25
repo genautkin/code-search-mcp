@@ -354,18 +354,63 @@ export class VectorStore {
     }).sort((a, b) => b.score - a.score);
   }
 
+  private normalizeLanguage(lang: string): string {
+    const l = lang.toLowerCase().trim().replace(/^\./, '');
+    switch (l) {
+      case 'ts':
+      case 'tsx':
+      case 'typescript':
+        return 'typescript';
+      case 'js':
+      case 'jsx':
+      case 'javascript':
+      case 'mjs':
+      case 'cjs':
+        return 'javascript';
+      case 'vue':
+        return 'vue';
+      case 'svelte':
+        return 'svelte';
+      case 'cs':
+      case 'c#':
+      case 'csharp':
+        return 'csharp';
+      case 'py':
+      case 'python':
+        return 'python';
+      case 'md':
+      case 'markdown':
+      case 'mdx':
+        return 'markdown';
+      case 'golang':
+      case 'go':
+        return 'go';
+      case 'rs':
+      case 'rust':
+        return 'rust';
+      case 'cpp':
+      case 'c++':
+      case 'c':
+        return 'cpp';
+      default:
+        return l;
+    }
+  }
+
   private applyFilters(results: SearchResult[], options?: SearchOptions, queryText?: string): SearchResult[] {
     if (!options) return results;
     let filtered = results;
 
     if (options.pathFilter) {
-      const pf = options.pathFilter.toLowerCase().replace(/\\/g, '/');
-      filtered = filtered.filter((r) => r.filePath.toLowerCase().includes(pf));
+      const pf = options.pathFilter.toLowerCase().replace(/\\/g, '/').replace(/^\.?\//, '').replace(/\/$/, '');
+      if (pf) {
+        filtered = filtered.filter((r) => r.filePath.toLowerCase().includes(pf));
+      }
     }
 
     if (options.language) {
-      const lang = options.language.toLowerCase();
-      filtered = filtered.filter((r) => (r.language || '').toLowerCase() === lang);
+      const targetLang = this.normalizeLanguage(options.language);
+      filtered = filtered.filter((r) => this.normalizeLanguage(r.language || '') === targetLang);
     }
 
     if (options.codeOnly) {
@@ -413,7 +458,7 @@ export class VectorStore {
   ): Promise<SearchResult[]> {
     const opts: SearchOptions = typeof options === 'number' ? { limit: options } : (options || {});
     const limit = opts.limit ?? 10;
-    const fetchLimit = (opts.pathFilter || opts.language || opts.codeOnly) ? Math.max(limit * 4, 40) : limit;
+    const fetchLimit = (opts.pathFilter || opts.language || opts.codeOnly) ? Math.max(limit * 10, 100) : Math.max(limit * 3, 30);
 
     let rawResults: SearchResult[];
     if (queryText) {
