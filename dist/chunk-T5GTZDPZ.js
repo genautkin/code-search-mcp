@@ -556,6 +556,16 @@ var VectorStore = class {
       await this.retryOnConflict((table) => table.delete(condition));
     }
   }
+  async createVectorIndex() {
+    const table = this.ensureTable();
+    const rowCount = await table.countRows();
+    if (rowCount < 256) return;
+    try {
+      await table.createIndex("vector", { replace: true });
+    } catch (err) {
+      console.warn("[code-search-mcp] Notice: Could not build IVF-PQ vector index:", err);
+    }
+  }
   async searchVector(queryVector, limit = 10) {
     const table = this.ensureTable();
     const rowCount = await table.countRows();
@@ -1336,6 +1346,10 @@ var IndexerWorker = class {
       this.status.lastIndexedAt = Date.now();
       this.status.currentFile = void 0;
       this.status.indexedChunks = await this.store.count();
+      if (this.status.indexedChunks >= 256) {
+        await this.store.createVectorIndex().catch(() => {
+        });
+      }
       onProgress?.({ ...this.status });
     } catch (err) {
       this.status.state = "error";
@@ -1383,8 +1397,23 @@ var IndexerWorker = class {
       await this.init();
     }
     const opts = typeof options === "number" ? { limit: options } : options || {};
-    const queryVector = await this.embeddings.embedText(queryText);
-    const results = await this.store.search(queryVector, opts, queryText);
+    const SEARCH_TIMEOUT_MS = 5e3;
+    const executeSearch = async () => {
+      const queryVector = await this.embeddings.embedText(queryText);
+      return await this.store.search(queryVector, opts, queryText);
+    };
+    const timeoutFallback = new Promise((resolve5) => {
+      const timer = setTimeout(async () => {
+        try {
+          const lexicalOnly = await this.store.searchLexical(queryText, opts.limit || 10);
+          resolve5(lexicalOnly);
+        } catch {
+          resolve5([]);
+        }
+      }, SEARCH_TIMEOUT_MS);
+      timer.unref?.();
+    });
+    const results = await Promise.race([executeSearch(), timeoutFallback]);
     const status = this.getStatus();
     let output = "";
     if (status.state !== "ready") {
@@ -2209,4 +2238,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-UJ2WUGP5.js.map
+//# sourceMappingURL=chunk-T5GTZDPZ.js.map

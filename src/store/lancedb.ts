@@ -130,6 +130,18 @@ export class VectorStore {
     }
   }
 
+  public async createVectorIndex(): Promise<void> {
+    const table = this.ensureTable();
+    const rowCount = await table.countRows();
+    if (rowCount < 256) return;
+    try {
+      await table.createIndex('vector', { replace: true });
+    } catch (err) {
+      // In small datasets or on error, fallback to flat vector scan
+      console.warn('[code-search-mcp] Notice: Could not build IVF-PQ vector index:', err);
+    }
+  }
+
   public async searchVector(queryVector: number[], limit: number = 10): Promise<SearchResult[]> {
     const table = this.ensureTable();
     const rowCount = await table.countRows();

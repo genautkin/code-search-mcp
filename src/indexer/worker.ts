@@ -163,6 +163,9 @@ export class IndexerWorker {
       this.status.lastIndexedAt = Date.now();
       this.status.currentFile = undefined;
       this.status.indexedChunks = await this.store.count();
+      if (this.status.indexedChunks >= 256) {
+        await this.store.createVectorIndex().catch(() => {});
+      }
       onProgress?.({ ...this.status });
     } catch (err: any) {
       this.status.state = 'error';
@@ -228,8 +231,28 @@ export class IndexerWorker {
       await this.init();
     }
     const opts: SearchOptions = typeof options === 'number' ? { limit: options } : (options || {});
-    const queryVector = await this.embeddings.embedText(queryText);
-    const results = await this.store.search(queryVector, opts, queryText);
+
+    // Strict 5-second search timeout guarantee with instantaneous lexical fallback
+    const SEARCH_TIMEOUT_MS = 5000;
+
+    const executeSearch = async (): Promise<SearchResult[]> => {
+      const queryVector = await this.embeddings.embedText(queryText);
+      return await this.store.search(queryVector, opts, queryText);
+    };
+
+    const timeoutFallback = new Promise<SearchResult[]>((resolve) => {
+      const timer = setTimeout(async () => {
+        try {
+          const lexicalOnly = await this.store.searchLexical(queryText, opts.limit || 10);
+          resolve(lexicalOnly);
+        } catch {
+          resolve([]);
+        }
+      }, SEARCH_TIMEOUT_MS);
+      timer.unref?.();
+    });
+
+    const results = await Promise.race([executeSearch(), timeoutFallback]);
     const status = this.getStatus();
 
     let output = '';

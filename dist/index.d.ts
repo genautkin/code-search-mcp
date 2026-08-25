@@ -138,6 +138,7 @@ declare class VectorStore {
     insertChunks(chunks: CodeChunk[]): Promise<void>;
     deleteByFilePath(filePath: string): Promise<void>;
     deleteByFilePaths(filePaths: string[]): Promise<void>;
+    createVectorIndex(): Promise<void>;
     searchVector(queryVector: number[], limit?: number): Promise<SearchResult[]>;
     searchLexical(queryText: string, limit?: number): Promise<SearchResult[]>;
     searchHybrid(queryVector: number[], queryText: string, limit?: number): Promise<SearchResult[]>;
