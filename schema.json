@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CodeSearchConfig",
+  "description": "Configuration schema for code-search-mcp (.codesearchrc.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference"
+    },
+    "version": {
+      "type": "integer",
+      "description": "Configuration version",
+      "default": 1
+    },
+    "indexPath": {
+      "type": "string",
+      "description": "Storage path for vector index (relative to project root or absolute)"
+    },
+    "respectGitignore": {
+      "type": "boolean",
+      "description": "Whether to skip files and directories matched in project .gitignore",
+      "default": true
+    },
+    "supportedExtensions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of file extensions to include in indexing (e.g. [\".ts\", \".tsx\", \".py\", \".md\"])"
+    },
+    "customExcludes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional glob patterns to exclude from indexing"
+    },
+    "maxFileSizeKb": {
+      "type": "integer",
+      "description": "Maximum file size in KB to index",
+      "default": 500
+    },
+    "batchSize": {
+      "type": "integer",
+      "description": "Embedding batch processing size",
+      "default": 50
+    },
+    "embeddingModel": {
+      "type": "string",
+      "description": "Hugging Face model ID for embeddings",
+      "default": "Xenova/all-MiniLM-L6-v2"
+    },
+    "queryMultiplier": {
+      "type": "integer",
+      "description": "Candidate multiplier for LanceDB search oversampling",
+      "default": 10
+    },
+    "searchEf": {
+      "type": "integer",
+      "description": "HNSW search exploration factor",
+      "default": 200
+    }
+  },
+  "additionalProperties": false
+}
