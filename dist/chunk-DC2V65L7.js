@@ -739,6 +739,14 @@ var VectorStore = class {
       if (!isJsonQuery && (hit.filePath.endsWith(".json") || hit.language === "json")) {
         finalScore *= 0.6;
       }
+      const isConfigOrLoggerFile = /(config|logger|startup|program|settings|assemblyinfo)\b/i.test(hit.filePath);
+      const queryExplicitlyWantsConfig = /(config|logger|logging|startup|program|settings|setup|env)\b/i.test(queryText);
+      if (isConfigOrLoggerFile && !queryExplicitlyWantsConfig) {
+        finalScore *= 0.75;
+      }
+      if (hit.filePath.startsWith("src/") || hit.filePath.startsWith("app/") || hit.filePath.startsWith("lib/")) {
+        finalScore = Math.min(1, finalScore * 1.05);
+      }
       combinedMap.set(key, {
         result: {
           ...hit,
@@ -2238,4 +2246,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-T5GTZDPZ.js.map
+//# sourceMappingURL=chunk-DC2V65L7.js.map

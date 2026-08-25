@@ -327,6 +327,18 @@ export class VectorStore {
         finalScore *= 0.6;
       }
 
+      // Dampen generic root boilerplate / config files unless the query specifically asks for them
+      const isConfigOrLoggerFile = /(config|logger|startup|program|settings|assemblyinfo)\b/i.test(hit.filePath);
+      const queryExplicitlyWantsConfig = /(config|logger|logging|startup|program|settings|setup|env)\b/i.test(queryText);
+      if (isConfigOrLoggerFile && !queryExplicitlyWantsConfig) {
+        finalScore *= 0.75;
+      }
+
+      // Slight boost for primary application source folders
+      if (hit.filePath.startsWith('src/') || hit.filePath.startsWith('app/') || hit.filePath.startsWith('lib/')) {
+        finalScore = Math.min(1.0, finalScore * 1.05);
+      }
+
       combinedMap.set(key, {
         result: {
           ...hit,
