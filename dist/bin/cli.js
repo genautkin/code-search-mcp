@@ -6,7 +6,7 @@ import {
   isProjectInitialized,
   loadConfig,
   runInit
-} from "../chunk-XYGTIGJZ.js";
+} from "../chunk-OXHQWA2T.js";
 
 // bin/cli.ts
 import { Command } from "commander";
@@ -303,8 +303,9 @@ program.command("index [path]").description("Rebuild or update the search index 
 });
 program.command("search <query>").description("Execute a semantic search query directly in the terminal").option("-p, --path <path>", "Project root directory to search").option("-l, --limit <limit>", "Max number of results to return", "10").option("--path-filter <filter>", "Path substring filter").option("--lang <language>", "Language filter").option("--code-only", "Exclude markdown documentation", false).action(async (query, options) => {
   try {
+    const targetPath = options.path || program.opts().path;
     const res = await runSearch(query, {
-      projectRoot: options.path,
+      projectRoot: targetPath,
       limit: parseInt(options.limit, 10) || 10,
       pathFilter: options.pathFilter,
       language: options.lang,

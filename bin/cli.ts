@@ -131,8 +131,9 @@ program
   .option('--code-only', 'Exclude markdown documentation', false)
   .action(async (query, options) => {
     try {
+      const targetPath = options.path || program.opts().path;
       const res = await runSearch(query, {
-        projectRoot: options.path,
+        projectRoot: targetPath,
         limit: parseInt(options.limit, 10) || 10,
         pathFilter: options.pathFilter,
         language: options.lang,

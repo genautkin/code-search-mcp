@@ -43,7 +43,6 @@ export class EmbeddingEngine {
     if (texts.length === 0) return [];
     const extractor = await this.getExtractor();
     const results: number[][] = [];
-    const dim = 384;
 
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, i + batchSize).map((t) =>
@@ -54,8 +53,9 @@ export class EmbeddingEngine {
         normalize: true
       });
 
+      const batchDim = output.dims ? output.dims[1] : Math.round(output.data.length / batch.length);
       for (let j = 0; j < batch.length; j++) {
-        const slice = Array.from(output.data.slice(j * dim, (j + 1) * dim)) as number[];
+        const slice = Array.from(output.data.slice(j * batchDim, (j + 1) * batchDim)) as number[];
         results.push(slice);
       }
     }

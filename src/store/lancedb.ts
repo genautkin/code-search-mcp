@@ -214,19 +214,19 @@ export class VectorStore {
       }
     }
 
-    // Base SQL filter on primary tokens and stemmed tokens
+    // Fast path-matching query in LanceDB (scans short filePath strings only, < 5ms)
     const primaryTokens = Array.from(new Set([...rawTokens, ...enhanced.tokens])).slice(0, 5);
-    const searchTokens = Array.from(tokenSet).slice(0, 10);
-    const filterClauses = searchTokens.map((token) => {
+    const searchTokens = Array.from(tokenSet).slice(0, 8);
+    const pathClauses = searchTokens.map((token) => {
       const escaped = token.replace(/'/g, "''").replace(/\\/g, '\\\\').toLowerCase();
-      return `LOWER(\`content\`) LIKE '%${escaped}%' OR LOWER(\`filePath\`) LIKE '%${escaped}%'`;
+      return `LOWER(\`filePath\`) LIKE '%${escaped}%'`;
     });
 
     const isJsonQuery = queryText.toLowerCase().includes('json');
 
     try {
-      const whereClause = filterClauses.join(' OR ');
-      const records = await table.query().where(whereClause).limit(limit).toArray();
+      const whereClause = pathClauses.join(' OR ');
+      const records = await table.query().where(whereClause).limit(limit * 2).toArray();
 
       return records
         .map((record: any) => {
@@ -251,8 +251,7 @@ export class VectorStore {
             if (lowerContent.includes(tLower)) matchCount += 1;
           }
 
-          let score = Math.min(1, matchCount * 0.1);
-          // De-prioritize raw static JSON dictionary files when searching code/concepts
+          let score = Math.min(0.85, matchCount * 0.05);
           if (!isJsonQuery && (record.filePath?.endsWith('.json') || record.language === 'json')) {
             score *= 0.5;
           }
@@ -280,78 +279,70 @@ export class VectorStore {
       this.searchLexical(queryText, candidateLimit)
     ]);
 
-    if (lexicalHits.length === 0) {
-      return vectorHits.slice(0, limit);
-    }
-
     if (vectorHits.length === 0) {
       return lexicalHits.slice(0, limit);
     }
 
-    const rrfMap = new Map<string, { result: SearchResult; rrfScore: number; vectorScore: number }>();
-    const RRF_K = 60;
     const isJsonQuery = queryText.toLowerCase().includes('json');
+    const stopWords = new Set([
+      'the', 'and', 'for', 'with', 'where', 'how', 'what', 'this', 'that', 'from',
+      'code', 'file', 'find', 'search', 'get', 'show', 'when', 'which', 'about', 'into'
+    ]);
+    const queryTokens = queryText
+      .split(/[\s,;:!?()[\]{}<>"'`]+/)
+      .map((t) => t.trim().toLowerCase())
+      .filter((t) => t.length >= 2 && !stopWords.has(t));
 
-    for (let i = 0; i < vectorHits.length; i++) {
-      const hit = vectorHits[i];
+    // Combine vector hits with fast in-memory keyword re-ranking
+    const combinedMap = new Map<string, { result: SearchResult; finalScore: number }>();
+
+    for (const hit of vectorHits) {
       const key = `${hit.filePath}:${hit.startLine}:${hit.endLine}`;
-      let rrf = 1.0 / (RRF_K + (i + 1));
-      if (!isJsonQuery && (hit.filePath.endsWith('.json') || hit.language === 'json')) {
-        rrf *= 0.6;
+      const lowerContent = (hit.content || '').toLowerCase();
+      const lowerPath = hit.filePath.toLowerCase();
+      let matchedTokens = 0;
+
+      for (const token of queryTokens) {
+        if (lowerPath.includes(token) || lowerContent.includes(token)) {
+          matchedTokens++;
+        }
       }
-      rrfMap.set(key, {
-        result: hit,
-        rrfScore: rrf,
-        vectorScore: hit.score
+
+      const matchRatio = queryTokens.length > 0 ? matchedTokens / queryTokens.length : 0;
+      let finalScore = hit.score * 0.6 + matchRatio * 0.4;
+
+      if (!isJsonQuery && (hit.filePath.endsWith('.json') || hit.language === 'json')) {
+        finalScore *= 0.6;
+      }
+
+      combinedMap.set(key, {
+        result: {
+          ...hit,
+          score: Number(finalScore.toFixed(4))
+        },
+        finalScore
       });
     }
 
-    for (let j = 0; j < lexicalHits.length; j++) {
-      const hit = lexicalHits[j];
-      const key = `${hit.filePath}:${hit.startLine}:${hit.endLine}`;
-      let rrf = 1.2 / (RRF_K + (j + 1));
-      if (!isJsonQuery && (hit.filePath.endsWith('.json') || hit.language === 'json')) {
-        rrf *= 0.6;
-      }
-      const existing = rrfMap.get(key);
+    // Merge in pure lexical hits
+    for (const lex of lexicalHits) {
+      const key = `${lex.filePath}:${lex.startLine}:${lex.endLine}`;
+      const existing = combinedMap.get(key);
       if (existing) {
-        existing.rrfScore += rrf;
+        existing.finalScore = Math.min(1.0, existing.finalScore + lex.score * 0.3);
+        existing.result.score = Number(existing.finalScore.toFixed(4));
       } else {
-        rrfMap.set(key, {
-          result: hit,
-          rrfScore: rrf,
-          vectorScore: hit.score * 0.7
+        combinedMap.set(key, {
+          result: lex,
+          finalScore: lex.score
         });
       }
     }
 
-    const fused = Array.from(rrfMap.values())
-      .sort((a, b) => b.rrfScore - a.rrfScore)
-      .slice(0, candidateLimit);
-
-    if (fused.length === 0) return [];
-
-    // Detect code intent from query (e.g. "find the code", camelCase tokens like isKo, function keywords)
-    const hasCodeIntent =
-      /\b(code|func|function|class|interface|type|const|method|handler|builder|component|is[A-Z]|get[A-Z]|set[A-Z]|has[A-Z])\b/i.test(
-        queryText
-      ) || /[a-z][A-Z]/.test(queryText);
-
-    const maxRrf = fused[0].rrfScore;
-    return fused.map(({ result, rrfScore, vectorScore }) => {
-      let blendedScore = Math.max(vectorScore, Math.min(0.95, (rrfScore / maxRrf) * 0.85));
-      const isCodeFile = result.language !== 'markdown' && !result.filePath.endsWith('.md') && !result.filePath.endsWith('.mdx');
-
-      // Boost code files when query has code intent
-      if (hasCodeIntent && isCodeFile) {
-        blendedScore = Math.min(0.99, blendedScore * 1.15);
-      }
-
-      return {
-        ...result,
-        score: Number(blendedScore.toFixed(4))
-      };
-    }).sort((a, b) => b.score - a.score);
+    return Array.from(combinedMap.values())
+      .sort((a, b) => b.finalScore - a.finalScore)
+      .map((item) => item.result)
+      .slice(0, limit);
   }
 
   private normalizeLanguage(lang: string): string {
