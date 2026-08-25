@@ -146,12 +146,30 @@ program
   });
 
 // Default action / MCP server mode (when invoked with no subcommand or with -p / -m flags)
-process.on('uncaughtException', (err) => {
+process.stdout.on('error', (err: any) => {
+  if (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED') {
+    process.exit(0);
+  }
+});
+
+process.stderr.on('error', (err: any) => {
+  if (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED') {
+    process.exit(0);
+  }
+});
+
+process.on('uncaughtException', (err: any) => {
+  if (err?.code === 'EPIPE' || err?.code === 'ERR_STREAM_DESTROYED') {
+    process.exit(0);
+  }
   logger.error('Uncaught exception in code-search-mcp process', { error: String(err), stack: err?.stack });
   process.stderr.write(`[code-search-mcp] Uncaught exception: ${err}\n`);
 });
 
-process.on('unhandledRejection', (reason) => {
+process.on('unhandledRejection', (reason: any) => {
+  if (reason?.code === 'EPIPE' || reason?.code === 'ERR_STREAM_DESTROYED') {
+    process.exit(0);
+  }
   logger.error('Unhandled rejection in code-search-mcp process', { reason: String(reason) });
   process.stderr.write(`[code-search-mcp] Unhandled rejection: ${reason}\n`);
 });

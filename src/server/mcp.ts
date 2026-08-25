@@ -302,6 +302,34 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
 
   const start = async () => {
     const transport = new StdioServerTransport();
+
+    server.onclose = async () => {
+      try {
+        await watcher.stop();
+      } catch {}
+      process.exit(0);
+    };
+
+    server.onerror = (err) => {
+      // Don't crash on standard pipe disconnects
+      if ((err as any)?.code === 'EPIPE' || (err as any)?.code === 'ERR_STREAM_DESTROYED') {
+        process.exit(0);
+      }
+    };
+
+    transport.onclose = async () => {
+      try {
+        await watcher.stop();
+      } catch {}
+      process.exit(0);
+    };
+
+    transport.onerror = (err) => {
+      if ((err as any)?.code === 'EPIPE' || (err as any)?.code === 'ERR_STREAM_DESTROYED') {
+        process.exit(0);
+      }
+    };
+
     await server.connect(transport);
 
     if (isInit) {

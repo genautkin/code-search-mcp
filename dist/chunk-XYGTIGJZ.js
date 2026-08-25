@@ -2090,6 +2090,30 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
   });
   const start = async () => {
     const transport = new StdioServerTransport();
+    server.onclose = async () => {
+      try {
+        await watcher.stop();
+      } catch {
+      }
+      process.exit(0);
+    };
+    server.onerror = (err) => {
+      if (err?.code === "EPIPE" || err?.code === "ERR_STREAM_DESTROYED") {
+        process.exit(0);
+      }
+    };
+    transport.onclose = async () => {
+      try {
+        await watcher.stop();
+      } catch {
+      }
+      process.exit(0);
+    };
+    transport.onerror = (err) => {
+      if (err?.code === "EPIPE" || err?.code === "ERR_STREAM_DESTROYED") {
+        process.exit(0);
+      }
+    };
     await server.connect(transport);
     if (isInit) {
       await watcher.start();
@@ -2135,4 +2159,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-W6UCGGNB.js.map
+//# sourceMappingURL=chunk-XYGTIGJZ.js.map
