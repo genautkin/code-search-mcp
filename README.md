@@ -7,30 +7,78 @@ Works out-of-the-box with **Claude Code**, **Gemini CLI**, **Antigravity (`agy`)
 
 ---
 
-## ⚡️ Quick Start
+## ⚡️ Quick Start (30-Second Setup)
 
-### 1. Install Globally (Recommended)
+### 1. Install Globally
 ```bash
 npm install -g github:genautkin/code-search-mcp
 ```
-*(Or use on-demand without installing: `npx github:genautkin/code-search-mcp init`)*
+
+### 2. Connect to Your AI Assistant (One-Time)
+- **Claude Code**:
+  ```bash
+  claude mcp add code-search -s user -- code-search-mcp
+  ```
+- **Antigravity CLI (`agy`)**:
+  ```bash
+  mkdir -p ~/.gemini/config/plugins/code-search && cat << 'EOF' > ~/.gemini/config/plugins/code-search/mcp_config.json
+  {
+    "mcpServers": {
+      "code-search": {
+        "command": "code-search-mcp"
+      }
+    }
+  }
+  EOF
+  ```
+- **Cursor / Claude Desktop / Gemini CLI**:
+  Add `"code-search": { "command": "code-search-mcp" }` to your MCP configuration file.
+
+### 3. Initialize in Any Project
+Navigate to any repository and run:
+```bash
+code-search-mcp init
+```
+*(Or run `code-search-mcp init -y` for 1-second automated setup with smart defaults)*
+
+Now you and your AI coding assistant can search your codebase by meaning! 🚀
 
 ---
 
-### 2. Connect It to Your AI Client
+## 📖 Detailed Guide
 
-Configure your AI assistant once to enable `code-search`:
+### 📦 1. Installation
+
+You can install `code-search-mcp` globally or run it on demand:
+
+- **Global Installation (Recommended)**:
+  ```bash
+  npm install -g github:genautkin/code-search-mcp
+  ```
+  Places the fast `code-search-mcp` binary into your system PATH.
+
+- **On-Demand Execution (No global install)**:
+  ```bash
+  npx github:genautkin/code-search-mcp init
+  ```
+
+---
+
+### 🔌 2. Connecting to MCP Clients
+
+`code-search-mcp` operates as a high-speed stdio MCP server. When registered globally, it works across all your projects without draining battery or running background daemons on uninitialized repos.
 
 #### 🧠 Claude Code
 ```bash
-# Global User Install (Available in all projects):
+# Available globally across all projects:
 claude mcp add code-search -s user -- code-search-mcp
 
-# Or single project install:
+# Or scoped to a single specific project directory:
 claude mcp add code-search -- code-search-mcp --path /path/to/your/project
 ```
 
 #### 🤖 Antigravity CLI (`agy`)
+Register the plugin in your user settings:
 ```bash
 mkdir -p ~/.gemini/config/plugins/code-search && cat << 'EOF' > ~/.gemini/config/plugins/code-search/plugin.json
 { "name": "code-search" }
@@ -59,8 +107,8 @@ Add to `~/.gemini/settings.json` (or workspace `.gemini/settings.json`):
 }
 ```
 
-#### 💻 Cursor / Claude Desktop
-Add to `.cursor/mcp.json` (or `claude_desktop_config.json`):
+#### 💻 Cursor / Claude Desktop / Windsurf
+Add to `.cursor/mcp.json` or `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
@@ -74,35 +122,45 @@ Add to `.cursor/mcp.json` (or `claude_desktop_config.json`):
 
 ---
 
-### 3. Initialize your project
-Run the interactive setup wizard in any repository:
+### 🪄 3. Initializing a Project (`init`)
+
+To activate semantic search for a repository, run the interactive setup wizard:
 
 ```bash
 code-search-mcp init
 ```
 
-The wizard asks:
-- **Where to store the index** (`node_modules/.cache/code-search/lancedb` for zero git noise, or `.code-search/lancedb`, or custom)
-- **Skip indexing files in `.gitignore`** (`Yes` / `No`)
-- **Create `.codesearchignore`** with recommended excludes (`Yes` / `No`)
-- **Auto-detected file types**: Reviews detected extensions in your repo and lets you customize the list
-- **Start initial index immediately** (`Yes` / `No`)
+#### Interactive Wizard Features:
+1. **📁 Index Storage Location**:
+   - `node_modules/.cache/code-search/lancedb` (*Default for JavaScript/TypeScript projects — **Zero Git Noise***)
+   - `.code-search/lancedb` (*Automatically added to `.gitignore` to keep your repo clean*)
+   - *Custom path*
+2. **🛡 Respect `.gitignore`**: Automatically skips build outputs, bundles, and vendor folders already in your `.gitignore`.
+3. **📝 Search Ignore File (`.codesearchignore`)**: Automatically skips asking if `.codesearchignore` already exists. If missing, offers recommended exclude patterns for test fixtures and mock snapshots.
+4. **🔍 File Extension Auto-detection**: Scans repository contents to detect active extensions (e.g. `.ts`, `.tsx`, `.py`, `.go`, `.json`, `.md`), with the option to customize.
+5. **🚀 Initial Indexing**: Builds initial vector index immediately with live progress and status summary.
 
-*(Or pass `-y` to skip questions and use smart defaults: `code-search-mcp init -y`)*
+#### Non-Interactive / CI Setup:
+Pass `-y` to skip questions and apply smart defaults:
+```bash
+code-search-mcp init -y
+```
+
+> **Tip:** You can change your configuration anytime by editing `.codesearchrc.json` or `.codesearchignore`.
 
 ---
 
-## 💻 CLI Commands Suite
+### 💻 4. CLI Command Reference
 
-`code-search-mcp` is both an MCP server and a fast terminal CLI:
+`code-search-mcp` is both an MCP server and a fast terminal utility:
 
 | Command | Description |
 |---|---|
 | `code-search-mcp init [path]` | Interactive setup wizard (use `-y` for non-interactive) |
 | `code-search-mcp uninit [path]` | Remove configuration and clean vector database index |
 | `code-search-mcp status [path]` | Check index health, total indexed files, chunk counts, and database path |
-| `code-search-mcp index [path]` | Rebuild or update the vector index (use `-f` for full clean rebuild) |
-| `code-search-mcp search <query>` | Run semantic search directly from your terminal |
+| `code-search-mcp index [path]` | Rebuild or update the vector index with live progress (use `-f` for full clean rebuild) |
+| `code-search-mcp search <query>` | Run semantic search directly from your terminal with syntax highlighting |
 
 ---
 
