@@ -37,6 +37,7 @@
   "license": "MIT",
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
+    "@inquirer/prompts": "^8.6.0",
     "@lancedb/lancedb": "^0.13.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "apache-arrow": "^17.0.0",

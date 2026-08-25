@@ -152,9 +152,32 @@ var DEFAULT_CONFIG = {
   embeddingModel: "Xenova/all-MiniLM-L6-v2",
   batchSize: 50,
   maxFileSizeKb: 500,
+  respectGitignore: true,
   queryMultiplier: 10,
   searchEf: 200
 };
+var RECOMMENDED_CODESEARCHIGNORE = `# code-search-mcp ignore patterns
+# Syntax matches standard .gitignore glob rules
+
+# Test fixtures, snapshots and mocks
+**/fixtures/**
+**/__snapshots__/**
+**/mocks/**
+*.snap
+
+# Generated code and type declarations
+*.generated.*
+*.d.ts.map
+
+# Build, cache and bundle output
+dist/**
+build/**
+.cache/**
+
+# Documentation assets & media
+docs/images/**
+docs/assets/**
+`;
 
 // src/config/loader.ts
 import * as fs from "fs";
@@ -178,15 +201,28 @@ function findProjectRoot(startDir = process.cwd()) {
     current = parent;
   }
 }
-function createIgnoreMatcher(projectRoot, customExcludes = []) {
+function isProjectInitialized(projectRoot) {
+  let canonicalRoot = path.resolve(projectRoot);
+  try {
+    canonicalRoot = fs.realpathSync(canonicalRoot);
+  } catch {
+  }
+  const rcPath = path.join(canonicalRoot, ".codesearchrc.json");
+  const dotFolder = path.join(canonicalRoot, ".code-search");
+  const nmCache = path.join(canonicalRoot, "node_modules", ".cache", "code-search");
+  return fs.existsSync(rcPath) || fs.existsSync(dotFolder) || fs.existsSync(nmCache);
+}
+function createIgnoreMatcher(projectRoot, customExcludes = [], respectGitignore = true) {
   const ig = ignore.default ? ignore.default() : ignore();
   ig.add(DEFAULT_EXCLUDES);
-  const gitignorePath = path.join(projectRoot, ".gitignore");
-  if (fs.existsSync(gitignorePath)) {
-    try {
-      const content = fs.readFileSync(gitignorePath, "utf8");
-      ig.add(content);
-    } catch {
+  if (respectGitignore) {
+    const gitignorePath = path.join(projectRoot, ".gitignore");
+    if (fs.existsSync(gitignorePath)) {
+      try {
+        const content = fs.readFileSync(gitignorePath, "utf8");
+        ig.add(content);
+      } catch {
+      }
     }
   }
   const ignorePath = path.join(projectRoot, ".ignore");
@@ -235,12 +271,17 @@ function loadConfig(projectRoot) {
     }
   }
   let dbPath;
-  const nodeModulesPath = path.join(canonicalRoot, "node_modules");
-  if (fs.existsSync(nodeModulesPath)) {
-    dbPath = path.join(nodeModulesPath, ".cache", "code-search", "lancedb");
+  if (fileConfig.indexPath) {
+    dbPath = path.isAbsolute(fileConfig.indexPath) ? fileConfig.indexPath : path.join(canonicalRoot, fileConfig.indexPath);
   } else {
-    dbPath = path.join(canonicalRoot, ".code-search", "lancedb");
+    const nodeModulesPath = path.join(canonicalRoot, "node_modules");
+    if (fs.existsSync(nodeModulesPath)) {
+      dbPath = path.join(nodeModulesPath, ".cache", "code-search", "lancedb");
+    } else {
+      dbPath = path.join(canonicalRoot, ".code-search", "lancedb");
+    }
   }
+  const respectGitignore = typeof fileConfig.respectGitignore === "boolean" ? fileConfig.respectGitignore : DEFAULT_CONFIG.respectGitignore;
   return {
     projectRoot: canonicalRoot,
     dbPath,
@@ -249,6 +290,7 @@ function loadConfig(projectRoot) {
     maxFileSizeKb: fileConfig.maxFileSizeKb || DEFAULT_CONFIG.maxFileSizeKb,
     supportedExtensions: fileConfig.supportedExtensions || DEFAULT_EXTENSIONS,
     customExcludes: fileConfig.customExcludes || [],
+    respectGitignore,
     queryMultiplier: fileConfig.queryMultiplier || DEFAULT_CONFIG.queryMultiplier,
     searchEf: fileConfig.searchEf || DEFAULT_CONFIG.searchEf
   };
@@ -927,7 +969,7 @@ function chunkCodeFile(relativePath, absolutePath, content, options = {}) {
 import * as fs3 from "fs";
 import * as path3 from "path";
 async function scanDirectory(config, indexedFilesMap = /* @__PURE__ */ new Map()) {
-  const matcher = createIgnoreMatcher(config.projectRoot, config.customExcludes);
+  const matcher = createIgnoreMatcher(config.projectRoot, config.customExcludes, config.respectGitignore);
   const maxSizeBytes = config.maxFileSizeKb * 1024;
   const supportedExtSet = new Set(config.supportedExtensions.map((e) => e.toLowerCase()));
   const filesToIndex = [];
@@ -1561,7 +1603,9 @@ export {
   DEFAULT_EXTENSIONS,
   DEFAULT_EXCLUDES,
   DEFAULT_CONFIG,
+  RECOMMENDED_CODESEARCHIGNORE,
   findProjectRoot,
+  isProjectInitialized,
   createIgnoreMatcher,
   loadConfig,
   EmbeddingEngine,
@@ -1577,4 +1621,4 @@ export {
   FileWatcher,
   createMcpServer
 };
-//# sourceMappingURL=chunk-SPJQEFWO.js.map
+//# sourceMappingURL=chunk-MXBAQQHV.js.map

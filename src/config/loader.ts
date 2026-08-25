@@ -29,21 +29,41 @@ export function findProjectRoot(startDir: string = process.cwd()): string {
   }
 }
 
-export function createIgnoreMatcher(projectRoot: string, customExcludes: string[] = []): { ignores: (relPath: string, isDirectory?: boolean) => boolean } {
+export function isProjectInitialized(projectRoot: string): boolean {
+  let canonicalRoot = path.resolve(projectRoot);
+  try {
+    canonicalRoot = fs.realpathSync(canonicalRoot);
+  } catch {
+    // fallback
+  }
+  const rcPath = path.join(canonicalRoot, '.codesearchrc.json');
+  const dotFolder = path.join(canonicalRoot, '.code-search');
+  const nmCache = path.join(canonicalRoot, 'node_modules', '.cache', 'code-search');
+
+  return fs.existsSync(rcPath) || fs.existsSync(dotFolder) || fs.existsSync(nmCache);
+}
+
+export function createIgnoreMatcher(
+  projectRoot: string,
+  customExcludes: string[] = [],
+  respectGitignore: boolean = true
+): { ignores: (relPath: string, isDirectory?: boolean) => boolean } {
   // @ts-ignore
   const ig: Ignore = ignore.default ? ignore.default() : ignore();
 
   // 1. Add default excludes
   ig.add(DEFAULT_EXCLUDES);
 
-  // 2. Add .gitignore if exists
-  const gitignorePath = path.join(projectRoot, '.gitignore');
-  if (fs.existsSync(gitignorePath)) {
-    try {
-      const content = fs.readFileSync(gitignorePath, 'utf8');
-      ig.add(content);
-    } catch {
-      // Ignore read errors
+  // 2. Add .gitignore if exists and respectGitignore is true
+  if (respectGitignore) {
+    const gitignorePath = path.join(projectRoot, '.gitignore');
+    if (fs.existsSync(gitignorePath)) {
+      try {
+        const content = fs.readFileSync(gitignorePath, 'utf8');
+        ig.add(content);
+      } catch {
+        // Ignore read errors
+      }
     }
   }
 
@@ -94,7 +114,11 @@ export function loadConfig(projectRoot: string): CodeSearchConfig {
     // fallback
   }
 
-  let fileConfig: Partial<CodeSearchConfig> = {};
+  interface FileConfigShape extends Partial<CodeSearchConfig> {
+    indexPath?: string;
+  }
+
+  let fileConfig: FileConfigShape = {};
 
   const configPath = path.join(canonicalRoot, '.codesearchrc.json');
   if (fs.existsSync(configPath)) {
@@ -106,14 +130,25 @@ export function loadConfig(projectRoot: string): CodeSearchConfig {
     }
   }
 
-  // Prefer node_modules/.cache/code-search/lancedb if node_modules exists (standard cache directory, zero git noise)
+  // Determine database path
   let dbPath: string;
-  const nodeModulesPath = path.join(canonicalRoot, 'node_modules');
-  if (fs.existsSync(nodeModulesPath)) {
-    dbPath = path.join(nodeModulesPath, '.cache', 'code-search', 'lancedb');
+  if (fileConfig.indexPath) {
+    dbPath = path.isAbsolute(fileConfig.indexPath)
+      ? fileConfig.indexPath
+      : path.join(canonicalRoot, fileConfig.indexPath);
   } else {
-    dbPath = path.join(canonicalRoot, '.code-search', 'lancedb');
+    const nodeModulesPath = path.join(canonicalRoot, 'node_modules');
+    if (fs.existsSync(nodeModulesPath)) {
+      dbPath = path.join(nodeModulesPath, '.cache', 'code-search', 'lancedb');
+    } else {
+      dbPath = path.join(canonicalRoot, '.code-search', 'lancedb');
+    }
   }
+
+  const respectGitignore =
+    typeof fileConfig.respectGitignore === 'boolean'
+      ? fileConfig.respectGitignore
+      : DEFAULT_CONFIG.respectGitignore;
 
   return {
     projectRoot: canonicalRoot,
@@ -123,6 +158,7 @@ export function loadConfig(projectRoot: string): CodeSearchConfig {
     maxFileSizeKb: fileConfig.maxFileSizeKb || DEFAULT_CONFIG.maxFileSizeKb,
     supportedExtensions: fileConfig.supportedExtensions || DEFAULT_EXTENSIONS,
     customExcludes: fileConfig.customExcludes || [],
+    respectGitignore,
     queryMultiplier: fileConfig.queryMultiplier || DEFAULT_CONFIG.queryMultiplier,
     searchEf: fileConfig.searchEf || DEFAULT_CONFIG.searchEf
   };

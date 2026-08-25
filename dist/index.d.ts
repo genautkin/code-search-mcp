@@ -8,8 +8,24 @@ interface CodeSearchConfig {
     maxFileSizeKb: number;
     supportedExtensions: string[];
     customExcludes: string[];
+    respectGitignore: boolean;
     queryMultiplier: number;
     searchEf: number;
+}
+interface ExtensionDetectionResult {
+    extensions: string[];
+    counts: Record<string, number>;
+    totalFiles: number;
+}
+interface InitOptions {
+    projectRoot?: string;
+    yes?: boolean;
+    clean?: boolean;
+    indexPath?: string;
+    respectGitignore?: boolean;
+    createIgnoreFile?: boolean;
+    supportedExtensions?: string[];
+    skipIndex?: boolean;
 }
 interface CodeChunk {
     id: string;
@@ -67,12 +83,15 @@ declare const DEFAULT_CONFIG: {
     embeddingModel: string;
     batchSize: number;
     maxFileSizeKb: number;
+    respectGitignore: boolean;
     queryMultiplier: number;
     searchEf: number;
 };
+declare const RECOMMENDED_CODESEARCHIGNORE = "# code-search-mcp ignore patterns\n# Syntax matches standard .gitignore glob rules\n\n# Test fixtures, snapshots and mocks\n**/fixtures/**\n**/__snapshots__/**\n**/mocks/**\n*.snap\n\n# Generated code and type declarations\n*.generated.*\n*.d.ts.map\n\n# Build, cache and bundle output\ndist/**\nbuild/**\n.cache/**\n\n# Documentation assets & media\ndocs/images/**\ndocs/assets/**\n";
 
 declare function findProjectRoot(startDir?: string): string;
-declare function createIgnoreMatcher(projectRoot: string, customExcludes?: string[]): {
+declare function isProjectInitialized(projectRoot: string): boolean;
+declare function createIgnoreMatcher(projectRoot: string, customExcludes?: string[], respectGitignore?: boolean): {
     ignores: (relPath: string, isDirectory?: boolean) => boolean;
 };
 declare function loadConfig(projectRoot: string): CodeSearchConfig;
@@ -201,4 +220,4 @@ declare function createMcpServer(config: CodeSearchConfig): Promise<{
     stop: () => Promise<void>;
 }>;
 
-export { type ChunkerOptions, type CodeChunk, type CodeSearchConfig, DEFAULT_CONFIG, DEFAULT_EXCLUDES, DEFAULT_EXTENSIONS, EmbeddingEngine, FileWatcher, type IndexStatus, IndexerWorker, type IndexingState, type ScanResult, type ScannedFile, type SearchOptions, type SearchResult, TABLE_NAME, VectorStore, chunkCodeFile, computeHash, createIgnoreMatcher, createMcpServer, detectLanguage, findProjectRoot, formatChunkForEmbedding, loadConfig, normalizePath, scanDirectory };
+export { type ChunkerOptions, type CodeChunk, type CodeSearchConfig, DEFAULT_CONFIG, DEFAULT_EXCLUDES, DEFAULT_EXTENSIONS, EmbeddingEngine, type ExtensionDetectionResult, FileWatcher, type IndexStatus, IndexerWorker, type IndexingState, type InitOptions, RECOMMENDED_CODESEARCHIGNORE, type ScanResult, type ScannedFile, type SearchOptions, type SearchResult, TABLE_NAME, VectorStore, chunkCodeFile, computeHash, createIgnoreMatcher, createMcpServer, detectLanguage, findProjectRoot, formatChunkForEmbedding, isProjectInitialized, loadConfig, normalizePath, scanDirectory };

@@ -5,6 +5,7 @@ import {
   EmbeddingEngine,
   FileWatcher,
   IndexerWorker,
+  RECOMMENDED_CODESEARCHIGNORE,
   TABLE_NAME,
   VectorStore,
   chunkCodeFile,
@@ -14,10 +15,11 @@ import {
   detectLanguage,
   findProjectRoot,
   formatChunkForEmbedding,
+  isProjectInitialized,
   loadConfig,
   normalizePath,
   scanDirectory
-} from "./chunk-SPJQEFWO.js";
+} from "./chunk-MXBAQQHV.js";
 export {
   DEFAULT_CONFIG,
   DEFAULT_EXCLUDES,
@@ -25,6 +27,7 @@ export {
   EmbeddingEngine,
   FileWatcher,
   IndexerWorker,
+  RECOMMENDED_CODESEARCHIGNORE,
   TABLE_NAME,
   VectorStore,
   chunkCodeFile,
@@ -34,6 +37,7 @@ export {
   detectLanguage,
   findProjectRoot,
   formatChunkForEmbedding,
+  isProjectInitialized,
   loadConfig,
   normalizePath,
   scanDirectory

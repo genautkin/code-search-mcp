@@ -48,6 +48,31 @@ export const DEFAULT_CONFIG = {
   embeddingModel: 'Xenova/all-MiniLM-L6-v2',
   batchSize: 50,
   maxFileSizeKb: 500,
+  respectGitignore: true,
   queryMultiplier: 10,
   searchEf: 200
 };
+
+export const RECOMMENDED_CODESEARCHIGNORE = `# code-search-mcp ignore patterns
+# Syntax matches standard .gitignore glob rules
+
+# Test fixtures, snapshots and mocks
+**/fixtures/**
+**/__snapshots__/**
+**/mocks/**
+*.snap
+
+# Generated code and type declarations
+*.generated.*
+*.d.ts.map
+
+# Build, cache and bundle output
+dist/**
+build/**
+.cache/**
+
+# Documentation assets & media
+docs/images/**
+docs/assets/**
+`;
+

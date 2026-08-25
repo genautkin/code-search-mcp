@@ -8,7 +8,7 @@ export async function scanDirectory(
   config: CodeSearchConfig,
   indexedFilesMap: Map<string, { updatedAt: number; contentHash: string }> = new Map()
 ): Promise<ScanResult> {
-  const matcher = createIgnoreMatcher(config.projectRoot, config.customExcludes);
+  const matcher = createIgnoreMatcher(config.projectRoot, config.customExcludes, config.respectGitignore);
   const maxSizeBytes = config.maxFileSizeKb * 1024;
   const supportedExtSet = new Set(config.supportedExtensions.map((e) => e.toLowerCase()));
 

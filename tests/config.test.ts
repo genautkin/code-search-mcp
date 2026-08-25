@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { loadConfig, createIgnoreMatcher } from '../src/config/loader.js';
+import { loadConfig, createIgnoreMatcher, isProjectInitialized } from '../src/config/loader.js';
 import { DEFAULT_EXCLUDES } from '../src/config/defaults.js';
 
 describe('Config Loader & Ignore Engine', () => {
@@ -54,14 +54,37 @@ describe('Config Loader & Ignore Engine', () => {
     expect(config.customExcludes).toContain('custom_ignore/**');
   });
 
-  it('should store database in node_modules/.cache/code-search when node_modules is present', () => {
-    fs.mkdirSync(path.join(tempDir, 'node_modules'));
-    const config = loadConfig(tempDir);
-    expect(config.dbPath).toBe(path.join(tempDir, 'node_modules', '.cache', 'code-search', 'lancedb'));
+  it('should detect if project is initialized', () => {
+    expect(isProjectInitialized(tempDir)).toBe(false);
+
+    fs.writeFileSync(path.join(tempDir, '.codesearchrc.json'), JSON.stringify({ version: 1 }));
+    expect(isProjectInitialized(tempDir)).toBe(true);
+
+    fs.unlinkSync(path.join(tempDir, '.codesearchrc.json'));
+    expect(isProjectInitialized(tempDir)).toBe(false);
+
+    fs.mkdirSync(path.join(tempDir, '.code-search'));
+    expect(isProjectInitialized(tempDir)).toBe(true);
   });
 
-  it('should fallback to .code-search/lancedb when node_modules is absent', () => {
+  it('should honor respectGitignore flag', () => {
+    fs.writeFileSync(path.join(tempDir, '.gitignore'), 'ignored_folder/\n');
+    const matcherWithGit = createIgnoreMatcher(tempDir, [], true);
+    const matcherWithoutGit = createIgnoreMatcher(tempDir, [], false);
+
+    expect(matcherWithGit.ignores('ignored_folder/file.ts')).toBe(true);
+    expect(matcherWithoutGit.ignores('ignored_folder/file.ts')).toBe(false);
+  });
+
+  it('should support custom indexPath in .codesearchrc.json', () => {
+    fs.writeFileSync(
+      path.join(tempDir, '.codesearchrc.json'),
+      JSON.stringify({
+        indexPath: '.my-search-db'
+      })
+    );
     const config = loadConfig(tempDir);
-    expect(config.dbPath).toBe(path.join(tempDir, '.code-search', 'lancedb'));
+    expect(config.dbPath).toBe(path.join(tempDir, '.my-search-db'));
   });
 });
+

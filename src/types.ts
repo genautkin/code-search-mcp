@@ -6,9 +6,28 @@ export interface CodeSearchConfig {
   maxFileSizeKb: number;
   supportedExtensions: string[];
   customExcludes: string[];
+  respectGitignore: boolean;
   queryMultiplier: number;
   searchEf: number;
 }
+
+export interface ExtensionDetectionResult {
+  extensions: string[];
+  counts: Record<string, number>;
+  totalFiles: number;
+}
+
+export interface InitOptions {
+  projectRoot?: string;
+  yes?: boolean;
+  clean?: boolean;
+  indexPath?: string;
+  respectGitignore?: boolean;
+  createIgnoreFile?: boolean;
+  supportedExtensions?: string[];
+  skipIndex?: boolean;
+}
+
 
 export interface CodeChunk {
   id: string; // e.g. "relPath:startLine:endLine"
