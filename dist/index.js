@@ -13,13 +13,14 @@ import {
   createIgnoreMatcher,
   createMcpServer,
   detectLanguage,
+  extractChunkSymbols,
   findProjectRoot,
   formatChunkForEmbedding,
   isProjectInitialized,
   loadConfig,
   normalizePath,
   scanDirectory
-} from "./chunk-QUJDDDZZ.js";
+} from "./chunk-JOAMQI7L.js";
 export {
   DEFAULT_CONFIG,
   DEFAULT_EXCLUDES,
@@ -35,6 +36,7 @@ export {
   createIgnoreMatcher,
   createMcpServer,
   detectLanguage,
+  extractChunkSymbols,
   findProjectRoot,
   formatChunkForEmbedding,
   isProjectInitialized,

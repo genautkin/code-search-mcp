@@ -87,7 +87,7 @@ declare const DEFAULT_CONFIG: {
     queryMultiplier: number;
     searchEf: number;
 };
-declare const RECOMMENDED_CODESEARCHIGNORE = "# code-search-mcp ignore patterns\n# Syntax matches standard .gitignore glob rules\n\n# Test fixtures, snapshots and mocks\n**/fixtures/**\n**/__snapshots__/**\n**/mocks/**\n*.snap\n\n# Generated code and type declarations\n*.generated.*\n*.d.ts.map\n\n# Build, cache and bundle output\ndist/**\nbuild/**\n.cache/**\n\n# Documentation assets & media\ndocs/images/**\ndocs/assets/**\n";
+declare const RECOMMENDED_CODESEARCHIGNORE = "# code-search-mcp ignore patterns\n# Syntax matches standard .gitignore glob rules\n\n# AI Agent skills, workflows & system prompts\n.github/skills/**\n.github/instructions/**\n.github/prompts/**\n.gemini/skills/**\n.claude/skills/**\n**/skills/**\n**/.agents/**\n\n# Test fixtures, snapshots and mocks\n**/fixtures/**\n**/__snapshots__/**\n**/mocks/**\n*.snap\n\n# Generated code and type declarations\n*.generated.*\n*.d.ts.map\n\n# Build, cache and bundle output\ndist/**\nbuild/**\n.cache/**\n\n# Documentation assets & media\ndocs/images/**\ndocs/assets/**\n";
 
 declare function findProjectRoot(startDir?: string): string;
 declare function isProjectInitialized(projectRoot: string): boolean;
@@ -159,7 +159,12 @@ declare function computeHash(text: string): string;
 declare function normalizePath(p: string): string;
 declare function detectLanguage(filePath: string): string;
 /**
- * Formats a code chunk with contextual metadata (file path, line numbers, language)
+ * Extracts top-level declarations, methods, and prominent camelCase identifiers
+ * from a code chunk to augment vector embedding representations.
+ */
+declare function extractChunkSymbols(content: string, language?: string): string[];
+/**
+ * Formats a code chunk with contextual metadata (file path, line numbers, language, symbols)
  * to maximize semantic vector embedding relevance across large repositories.
  */
 declare function formatChunkForEmbedding(chunk: {
@@ -220,4 +225,4 @@ declare function createMcpServer(initialConfig: CodeSearchConfig): Promise<{
     stop: () => Promise<void>;
 }>;
 
-export { type ChunkerOptions, type CodeChunk, type CodeSearchConfig, DEFAULT_CONFIG, DEFAULT_EXCLUDES, DEFAULT_EXTENSIONS, EmbeddingEngine, type ExtensionDetectionResult, FileWatcher, type IndexStatus, IndexerWorker, type IndexingState, type InitOptions, RECOMMENDED_CODESEARCHIGNORE, type ScanResult, type ScannedFile, type SearchOptions, type SearchResult, TABLE_NAME, VectorStore, chunkCodeFile, computeHash, createIgnoreMatcher, createMcpServer, detectLanguage, findProjectRoot, formatChunkForEmbedding, isProjectInitialized, loadConfig, normalizePath, scanDirectory };
+export { type ChunkerOptions, type CodeChunk, type CodeSearchConfig, DEFAULT_CONFIG, DEFAULT_EXCLUDES, DEFAULT_EXTENSIONS, EmbeddingEngine, type ExtensionDetectionResult, FileWatcher, type IndexStatus, IndexerWorker, type IndexingState, type InitOptions, RECOMMENDED_CODESEARCHIGNORE, type ScanResult, type ScannedFile, type SearchOptions, type SearchResult, TABLE_NAME, VectorStore, chunkCodeFile, computeHash, createIgnoreMatcher, createMcpServer, detectLanguage, extractChunkSymbols, findProjectRoot, formatChunkForEmbedding, isProjectInitialized, loadConfig, normalizePath, scanDirectory };

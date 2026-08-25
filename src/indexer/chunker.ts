@@ -58,8 +58,59 @@ export function detectLanguage(filePath: string): string {
   }
 }
 
+const LANGUAGE_KEYWORDS = new Set([
+  'if', 'else', 'return', 'for', 'while', 'switch', 'case', 'break', 'continue',
+  'import', 'export', 'from', 'default', 'as', 'new', 'this', 'super',
+  'true', 'false', 'null', 'undefined', 'void', 'any', 'string', 'number', 'boolean',
+  'public', 'private', 'protected', 'static', 'readonly', 'const', 'let', 'var',
+  'function', 'class', 'interface', 'type', 'enum', 'struct', 'trait', 'def', 'fn'
+]);
+
 /**
- * Formats a code chunk with contextual metadata (file path, line numbers, language)
+ * Extracts top-level declarations, methods, and prominent camelCase identifiers
+ * from a code chunk to augment vector embedding representations.
+ */
+export function extractChunkSymbols(content: string, language?: string): string[] {
+  const symbols = new Set<string>();
+
+  // 1. Declarations: class, interface, type, enum, function, method, struct, trait
+  const declRegex = /(?:class|interface|type|enum|struct|trait|record|function|fn|func|def)\s+([A-Za-z0-9_]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = declRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+
+  // 2. Variable function assignments & method signatures: const foo = () =>, methodName()
+  const funcAssignRegex = /(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/g;
+  while ((match = funcAssignRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+
+  const methodRegex = /(?:public|private|protected|static|async|override|virtual)\s+(?:async\s+)?([A-Za-z0-9_]+)\s*\(/g;
+  while ((match = methodRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+
+  // 3. Prominent camelCase or PascalCase identifier tokens (e.g. isKOEntity, futureOrderVisible)
+  const idRegex = /\b([a-z]+[A-Z0-9][A-Za-z0-9]*|[A-Z][a-z0-9]+[A-Z0-9][A-Za-z0-9]*)\b/g;
+  while ((match = idRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length >= 3 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+      if (symbols.size >= 20) break;
+    }
+  }
+
+  return Array.from(symbols).slice(0, 15);
+}
+
+/**
+ * Formats a code chunk with contextual metadata (file path, line numbers, language, symbols)
  * to maximize semantic vector embedding relevance across large repositories.
  */
 export function formatChunkForEmbedding(chunk: {
@@ -70,7 +121,9 @@ export function formatChunkForEmbedding(chunk: {
   content: string;
 }): string {
   const lang = chunk.language || detectLanguage(chunk.filePath);
-  const header = `// File: ${chunk.filePath} [L${chunk.startLine}-L${chunk.endLine}] (${lang})`;
+  const symbols = lang !== 'markdown' && lang !== 'text' ? extractChunkSymbols(chunk.content, lang) : [];
+  const symbolLine = symbols.length > 0 ? `\n// Symbols: ${symbols.join(', ')}` : '';
+  const header = `// File: ${chunk.filePath} [L${chunk.startLine}-L${chunk.endLine}] (${lang})${symbolLine}`;
   return `${header}\n${chunk.content}`;
 }
 

@@ -39,17 +39,34 @@ describe('Smart Code Chunker', () => {
     expect(chunks[0].filePath).toBe('src/windows/path.ts');
   });
 
-  it('should format chunks with contextual breadcrumbs for embeddings', async () => {
-    const { formatChunkForEmbedding } = await import('../src/indexer/chunker.js');
+  it('should format chunks with contextual breadcrumbs and extracted symbols for embeddings', async () => {
+    const { formatChunkForEmbedding, extractChunkSymbols } = await import('../src/indexer/chunker.js');
+    const code = `
+      export class OrchestratorSupervisorBuilder {
+        public buildSupervisorButtons(viewModel: any) {
+          if (viewModel.futureOrderVisible && !isKOEntity) {
+            pushContextMenuItems();
+          }
+        }
+      }
+    `;
+
+    const symbols = extractChunkSymbols(code, 'typescript');
+    expect(symbols).toContain('OrchestratorSupervisorBuilder');
+    expect(symbols).toContain('buildSupervisorButtons');
+    expect(symbols).toContain('futureOrderVisible');
+
     const header = formatChunkForEmbedding({
-      filePath: 'src/Charts/CIQ.Marker.js',
-      startLine: 105,
-      endLine: 150,
-      language: 'javascript',
-      content: 'CIQ.Marker = function() {};'
+      filePath: 'src/tfc/orchestrator-supervisor-builder.ts',
+      startLine: 1,
+      endLine: 10,
+      language: 'typescript',
+      content: code
     });
 
-    expect(header).toContain('// File: src/Charts/CIQ.Marker.js [L105-L150] (javascript)');
-    expect(header).toContain('CIQ.Marker = function() {};');
+    expect(header).toContain('// File: src/tfc/orchestrator-supervisor-builder.ts [L1-L10] (typescript)');
+    expect(header).toContain('// Symbols:');
+    expect(header).toContain('OrchestratorSupervisorBuilder');
+    expect(header).toContain('buildSupervisorButtons');
   });
 });

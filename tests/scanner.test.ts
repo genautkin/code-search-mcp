@@ -46,4 +46,17 @@ describe('File Scanner', () => {
     expect(result.filesToIndex[0].relativePath).toBe('src/app.vue');
     expect(result.unchangedFilesCount).toBe(1);
   });
+
+  it('should ignore agent skills and prompts directories by default', async () => {
+    fs.mkdirSync(path.join(tempDir, '.github', 'skills'), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, '.github', 'skills', 'browser-automation.md'), '# Browser Automation');
+    fs.writeFileSync(path.join(tempDir, 'docs.md'), '# Architecture Docs');
+
+    const config = loadConfig(tempDir);
+    const result = await scanDirectory(config, new Map());
+    const relPaths = result.filesToIndex.map(f => f.relativePath);
+
+    expect(relPaths).toContain('docs.md');
+    expect(relPaths.some(p => p.includes('.github/skills'))).toBe(false);
+  });
 });

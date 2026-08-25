@@ -67,7 +67,7 @@ var DEFAULT_EXCLUDES = [
   "bower_components/**",
   ".pnpm-store",
   ".pnpm-store/**",
-  // IDEs and tools
+  // IDEs, tools, and AI agent skills / prompt directories
   ".git",
   ".git/**",
   ".svn",
@@ -88,6 +88,16 @@ var DEFAULT_EXCLUDES = [
   ".vectorcode/**",
   ".code-search",
   ".code-search/**",
+  ".github/skills",
+  ".github/skills/**",
+  ".github/instructions",
+  ".github/instructions/**",
+  ".github/prompts",
+  ".github/prompts/**",
+  "skills",
+  "skills/**",
+  "**/skills/**",
+  "**/.agents/**",
   // Mobile / native wrapper builds
   "android",
   "android/**",
@@ -158,6 +168,15 @@ var DEFAULT_CONFIG = {
 };
 var RECOMMENDED_CODESEARCHIGNORE = `# code-search-mcp ignore patterns
 # Syntax matches standard .gitignore glob rules
+
+# AI Agent skills, workflows & system prompts
+.github/skills/**
+.github/instructions/**
+.github/prompts/**
+.gemini/skills/**
+.claude/skills/**
+**/skills/**
+**/.agents/**
 
 # Test fixtures, snapshots and mocks
 **/fixtures/**
@@ -753,16 +772,23 @@ var VectorStore = class {
     }
     const fused = Array.from(rrfMap.values()).sort((a, b) => b.rrfScore - a.rrfScore).slice(0, candidateLimit);
     if (fused.length === 0) return [];
+    const hasCodeIntent = /\b(code|func|function|class|interface|type|const|method|handler|builder|component|is[A-Z]|get[A-Z]|set[A-Z]|has[A-Z])\b/i.test(
+      queryText
+    ) || /[a-z][A-Z]/.test(queryText);
     const maxRrf = fused[0].rrfScore;
     return fused.map(({ result, rrfScore, vectorScore }) => {
-      const blendedScore = Math.max(vectorScore, Math.min(0.95, rrfScore / maxRrf * 0.85));
+      let blendedScore = Math.max(vectorScore, Math.min(0.95, rrfScore / maxRrf * 0.85));
+      const isCodeFile = result.language !== "markdown" && !result.filePath.endsWith(".md") && !result.filePath.endsWith(".mdx");
+      if (hasCodeIntent && isCodeFile) {
+        blendedScore = Math.min(0.99, blendedScore * 1.15);
+      }
       return {
         ...result,
         score: Number(blendedScore.toFixed(4))
       };
-    });
+    }).sort((a, b) => b.score - a.score);
   }
-  applyFilters(results, options) {
+  applyFilters(results, options, queryText) {
     if (!options) return results;
     let filtered = results;
     if (options.pathFilter) {
@@ -780,12 +806,20 @@ var VectorStore = class {
     }
     const limit = options.limit ?? 10;
     const maxPerFile = limit <= 5 ? 1 : 2;
+    const isExplicitDocQuery = options.pathFilter?.includes(".md") || options.language === "markdown" || /\b(docs|doc|adr|rfc|skills|readme|guide)\b/i.test(queryText || "");
+    const maxDocs = isExplicitDocQuery ? limit : Math.max(2, Math.floor(limit * 0.25));
+    let docCount = 0;
     const fileChunkCounts = /* @__PURE__ */ new Map();
     const diverse = [];
     for (const res of filtered) {
+      const isDoc = res.language === "markdown" || res.filePath.endsWith(".md") || res.filePath.endsWith(".mdx");
+      if (isDoc && !isExplicitDocQuery && docCount >= maxDocs) {
+        continue;
+      }
       const count = fileChunkCounts.get(res.filePath) || 0;
       if (count < maxPerFile) {
         fileChunkCounts.set(res.filePath, count + 1);
+        if (isDoc) docCount++;
         diverse.push(res);
       }
     }
@@ -801,7 +835,7 @@ var VectorStore = class {
     } else {
       rawResults = await this.searchVector(queryVector, fetchLimit);
     }
-    return this.applyFilters(rawResults, opts).slice(0, limit);
+    return this.applyFilters(rawResults, opts, queryText).slice(0, limit);
   }
   async count() {
     const table = this.ensureTable();
@@ -890,9 +924,87 @@ function detectLanguage(filePath) {
       return ext.replace(".", "") || "text";
   }
 }
+var LANGUAGE_KEYWORDS = /* @__PURE__ */ new Set([
+  "if",
+  "else",
+  "return",
+  "for",
+  "while",
+  "switch",
+  "case",
+  "break",
+  "continue",
+  "import",
+  "export",
+  "from",
+  "default",
+  "as",
+  "new",
+  "this",
+  "super",
+  "true",
+  "false",
+  "null",
+  "undefined",
+  "void",
+  "any",
+  "string",
+  "number",
+  "boolean",
+  "public",
+  "private",
+  "protected",
+  "static",
+  "readonly",
+  "const",
+  "let",
+  "var",
+  "function",
+  "class",
+  "interface",
+  "type",
+  "enum",
+  "struct",
+  "trait",
+  "def",
+  "fn"
+]);
+function extractChunkSymbols(content, language) {
+  const symbols = /* @__PURE__ */ new Set();
+  const declRegex = /(?:class|interface|type|enum|struct|trait|record|function|fn|func|def)\s+([A-Za-z0-9_]+)/g;
+  let match;
+  while ((match = declRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+  const funcAssignRegex = /(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/g;
+  while ((match = funcAssignRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+  const methodRegex = /(?:public|private|protected|static|async|override|virtual)\s+(?:async\s+)?([A-Za-z0-9_]+)\s*\(/g;
+  while ((match = methodRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+  const idRegex = /\b([a-z]+[A-Z0-9][A-Za-z0-9]*|[A-Z][a-z0-9]+[A-Z0-9][A-Za-z0-9]*)\b/g;
+  while ((match = idRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length >= 3 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+      if (symbols.size >= 20) break;
+    }
+  }
+  return Array.from(symbols).slice(0, 15);
+}
 function formatChunkForEmbedding(chunk) {
   const lang = chunk.language || detectLanguage(chunk.filePath);
-  const header = `// File: ${chunk.filePath} [L${chunk.startLine}-L${chunk.endLine}] (${lang})`;
+  const symbols = lang !== "markdown" && lang !== "text" ? extractChunkSymbols(chunk.content, lang) : [];
+  const symbolLine = symbols.length > 0 ? `
+// Symbols: ${symbols.join(", ")}` : "";
+  const header = `// File: ${chunk.filePath} [L${chunk.startLine}-L${chunk.endLine}] (${lang})${symbolLine}`;
   return `${header}
 ${chunk.content}`;
 }
@@ -1951,6 +2063,7 @@ export {
   computeHash,
   normalizePath,
   detectLanguage,
+  extractChunkSymbols,
   formatChunkForEmbedding,
   chunkCodeFile,
   scanDirectory,
@@ -1959,4 +2072,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-QUJDDDZZ.js.map
+//# sourceMappingURL=chunk-JOAMQI7L.js.map

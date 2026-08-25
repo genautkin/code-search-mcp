@@ -17,11 +17,13 @@ export const DEFAULT_EXCLUDES = [
   // Dependency directories
   'node_modules', 'node_modules/**', 'vendor', 'vendor/**', 'bower_components', 'bower_components/**', '.pnpm-store', '.pnpm-store/**',
   
-  // IDEs and tools
+  // IDEs, tools, and AI agent skills / prompt directories
   '.git', '.git/**', '.svn', '.svn/**', '.hg', '.hg/**',
   '.idea', '.idea/**', '.vscode', '.vscode/**', '.gemini', '.gemini/**', '.claude', '.claude/**',
   '.codegraph', '.codegraph/**', '.vectorcode', '.vectorcode/**', '.code-search', '.code-search/**',
-  
+  '.github/skills', '.github/skills/**', '.github/instructions', '.github/instructions/**', '.github/prompts', '.github/prompts/**',
+  'skills', 'skills/**', '**/skills/**', '**/.agents/**',
+
   // Mobile / native wrapper builds
   'android', 'android/**', 'ios', 'ios/**', 'windows_build', 'windows_build/**',
   
@@ -55,6 +57,15 @@ export const DEFAULT_CONFIG = {
 
 export const RECOMMENDED_CODESEARCHIGNORE = `# code-search-mcp ignore patterns
 # Syntax matches standard .gitignore glob rules
+
+# AI Agent skills, workflows & system prompts
+.github/skills/**
+.github/instructions/**
+.github/prompts/**
+.gemini/skills/**
+.claude/skills/**
+**/skills/**
+**/.agents/**
 
 # Test fixtures, snapshots and mocks
 **/fixtures/**

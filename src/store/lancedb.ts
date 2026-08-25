@@ -331,17 +331,30 @@ export class VectorStore {
 
     if (fused.length === 0) return [];
 
+    // Detect code intent from query (e.g. "find the code", camelCase tokens like isKo, function keywords)
+    const hasCodeIntent =
+      /\b(code|func|function|class|interface|type|const|method|handler|builder|component|is[A-Z]|get[A-Z]|set[A-Z]|has[A-Z])\b/i.test(
+        queryText
+      ) || /[a-z][A-Z]/.test(queryText);
+
     const maxRrf = fused[0].rrfScore;
     return fused.map(({ result, rrfScore, vectorScore }) => {
-      const blendedScore = Math.max(vectorScore, Math.min(0.95, (rrfScore / maxRrf) * 0.85));
+      let blendedScore = Math.max(vectorScore, Math.min(0.95, (rrfScore / maxRrf) * 0.85));
+      const isCodeFile = result.language !== 'markdown' && !result.filePath.endsWith('.md') && !result.filePath.endsWith('.mdx');
+
+      // Boost code files when query has code intent
+      if (hasCodeIntent && isCodeFile) {
+        blendedScore = Math.min(0.99, blendedScore * 1.15);
+      }
+
       return {
         ...result,
         score: Number(blendedScore.toFixed(4))
       };
-    });
+    }).sort((a, b) => b.score - a.score);
   }
 
-  private applyFilters(results: SearchResult[], options?: SearchOptions): SearchResult[] {
+  private applyFilters(results: SearchResult[], options?: SearchOptions, queryText?: string): SearchResult[] {
     if (!options) return results;
     let filtered = results;
 
@@ -362,15 +375,30 @@ export class VectorStore {
     }
 
     // Result Diversity: limit max chunks per file (default: 1 chunk per file for focused results, max 2 if limit > 5)
+    // And balance Documentation vs Code: max 2 docs in top 10 unless specifically querying markdown
     const limit = options.limit ?? 10;
     const maxPerFile = limit <= 5 ? 1 : 2;
+    const isExplicitDocQuery =
+      options.pathFilter?.includes('.md') ||
+      options.language === 'markdown' ||
+      /\b(docs|doc|adr|rfc|skills|readme|guide)\b/i.test(queryText || '');
+
+    const maxDocs = isExplicitDocQuery ? limit : Math.max(2, Math.floor(limit * 0.25));
+    let docCount = 0;
+
     const fileChunkCounts = new Map<string, number>();
     const diverse: SearchResult[] = [];
 
     for (const res of filtered) {
+      const isDoc = res.language === 'markdown' || res.filePath.endsWith('.md') || res.filePath.endsWith('.mdx');
+      if (isDoc && !isExplicitDocQuery && docCount >= maxDocs) {
+        continue; // Cap documentation to avoid burying code
+      }
+
       const count = fileChunkCounts.get(res.filePath) || 0;
       if (count < maxPerFile) {
         fileChunkCounts.set(res.filePath, count + 1);
+        if (isDoc) docCount++;
         diverse.push(res);
       }
     }
@@ -394,7 +422,7 @@ export class VectorStore {
       rawResults = await this.searchVector(queryVector, fetchLimit);
     }
 
-    return this.applyFilters(rawResults, opts).slice(0, limit);
+    return this.applyFilters(rawResults, opts, queryText).slice(0, limit);
   }
 
   public async count(): Promise<number> {
