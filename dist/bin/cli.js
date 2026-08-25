@@ -319,6 +319,36 @@ program.command("search <query>").description("Execute a semantic search query d
     process.exit(1);
   }
 });
+function treatStdinFailureAsShutdown(onTerminal, stream = process.stdin) {
+  let fired = false;
+  const fire = () => {
+    if (fired) return;
+    fired = true;
+    try {
+      stream.destroy?.();
+    } catch {
+    }
+    onTerminal();
+  };
+  stream.on("end", fire);
+  stream.on("close", fire);
+  stream.on("error", fire);
+}
+function installPpidWatchdog() {
+  const initialPpid = process.ppid;
+  if (initialPpid <= 1) return;
+  const timer = setInterval(() => {
+    try {
+      if (process.ppid !== initialPpid) {
+        process.exit(0);
+      }
+      process.kill(initialPpid, 0);
+    } catch {
+      process.exit(0);
+    }
+  }, 1e3);
+  timer.unref();
+}
 process.stdout.on("error", (err) => {
   if (err.code === "EPIPE" || err.code === "ERR_STREAM_DESTROYED") {
     process.exit(0);
@@ -330,7 +360,7 @@ process.stderr.on("error", (err) => {
   }
 });
 process.on("uncaughtException", (err) => {
-  if (err?.code === "EPIPE" || err?.code === "ERR_STREAM_DESTROYED") {
+  if (err?.code === "EPIPE" || err?.code === "ERR_STREAM_DESTROYED" || err?.code === "ECONNRESET") {
     process.exit(0);
   }
   logger.error("Uncaught exception in code-search-mcp process", { error: String(err), stack: err?.stack });
@@ -338,7 +368,7 @@ process.on("uncaughtException", (err) => {
 `);
 });
 process.on("unhandledRejection", (reason) => {
-  if (reason?.code === "EPIPE" || reason?.code === "ERR_STREAM_DESTROYED") {
+  if (reason?.code === "EPIPE" || reason?.code === "ERR_STREAM_DESTROYED" || reason?.code === "ECONNRESET") {
     process.exit(0);
   }
   logger.error("Unhandled rejection in code-search-mcp process", { reason: String(reason) });
@@ -379,8 +409,8 @@ program.option("-p, --path <path>", "Project root directory to index and search"
     process.on("SIGINT", () => handleExit("SIGINT"));
     process.on("SIGTERM", () => handleExit("SIGTERM"));
     process.on("SIGHUP", () => handleExit("SIGHUP"));
-    process.stdin.on("end", () => handleExit("stdin-end"));
-    process.stdin.on("close", () => handleExit("stdin-close"));
+    treatStdinFailureAsShutdown(() => handleExit("stdin-terminal"));
+    installPpidWatchdog();
     await start();
     logger.info("MCP Server started on stdio");
     process.stderr.write(`[code-search-mcp] MCP Server running on stdio.
