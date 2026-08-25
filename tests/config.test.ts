@@ -16,12 +16,10 @@ describe('Config Loader & Ignore Engine', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('should ignore default patterns (node_modules, dist, binaries, lock files)', () => {
+  it('should ignore internal metadata (.git, .code-search)', () => {
     const matcher = createIgnoreMatcher(tempDir);
-    expect(matcher.ignores('node_modules/foo/index.js')).toBe(true);
-    expect(matcher.ignores('dist/bundle.js')).toBe(true);
-    expect(matcher.ignores('package-lock.json')).toBe(true);
-    expect(matcher.ignores('assets/image.png')).toBe(true);
+    expect(matcher.ignores('.git/config')).toBe(true);
+    expect(matcher.ignores('.code-search/lancedb/data')).toBe(true);
     expect(matcher.ignores('src/index.ts')).toBe(false);
   });
 

@@ -37,126 +37,11 @@ var DEFAULT_EXTENSIONS = [
   ".zsh"
 ];
 var DEFAULT_EXCLUDES = [
-  // Build and distribution artifacts
-  "dist",
-  "dist/**",
-  "dist-*",
-  "dist-*/**",
-  "build",
-  "build/**",
-  "out",
-  "out/**",
-  "bin",
-  "bin/**",
-  "obj",
-  "obj/**",
-  "www",
-  "www/**",
-  "wwwroot",
-  "wwwroot/**",
-  "coverage",
-  "coverage/**",
-  ".nyc_output",
-  ".nyc_output/**",
-  // Dependency directories
-  "node_modules",
-  "node_modules/**",
-  "vendor",
-  "vendor/**",
-  "bower_components",
-  "bower_components/**",
-  ".pnpm-store",
-  ".pnpm-store/**",
-  // IDEs, tools, and AI agent skills / prompt directories
+  // Minimal internal safety guards (never index VCS internal metadata or database folder itself)
   ".git",
   ".git/**",
-  ".svn",
-  ".svn/**",
-  ".hg",
-  ".hg/**",
-  ".idea",
-  ".idea/**",
-  ".vscode",
-  ".vscode/**",
-  ".gemini",
-  ".gemini/**",
-  ".claude",
-  ".claude/**",
-  ".codegraph",
-  ".codegraph/**",
-  ".vectorcode",
-  ".vectorcode/**",
   ".code-search",
-  ".code-search/**",
-  ".github/skills",
-  ".github/skills/**",
-  ".github/instructions",
-  ".github/instructions/**",
-  ".github/prompts",
-  ".github/prompts/**",
-  "skills",
-  "skills/**",
-  "**/skills/**",
-  "**/.agents/**",
-  // Mobile / native wrapper builds
-  "android",
-  "android/**",
-  "ios",
-  "ios/**",
-  "windows_build",
-  "windows_build/**",
-  // Lock files
-  "package-lock.json",
-  "yarn.lock",
-  "pnpm-lock.yaml",
-  "composer.lock",
-  "Gemfile.lock",
-  "Cargo.lock",
-  "packages.lock.json",
-  // Minified & source maps
-  "*.min.js",
-  "*.min.css",
-  "*.map",
-  // Binary / media assets
-  "*.png",
-  "*.jpg",
-  "*.jpeg",
-  "*.gif",
-  "*.ico",
-  "*.cur",
-  "*.svg",
-  "*.woff",
-  "*.woff2",
-  "*.ttf",
-  "*.eot",
-  "*.otf",
-  "*.mp3",
-  "*.mp4",
-  "*.wav",
-  "*.mov",
-  "*.avi",
-  "*.zip",
-  "*.tar",
-  "*.gz",
-  "*.7z",
-  "*.rar",
-  "*.pdf",
-  "*.doc",
-  "*.docx",
-  "*.xls",
-  "*.xlsx",
-  "*.exe",
-  "*.dll",
-  "*.so",
-  "*.dylib",
-  "*.bin",
-  "*.DS_Store",
-  "Thumbs.db",
-  // Styling files (if noisy text-only embeddings)
-  "*.css",
-  "*.scss",
-  "*.sass",
-  "*.less"
+  ".code-search/**"
 ];
 var DEFAULT_CONFIG = {
   embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -169,7 +54,26 @@ var DEFAULT_CONFIG = {
 var RECOMMENDED_CODESEARCHIGNORE = `# code-search-mcp ignore patterns
 # Syntax matches standard .gitignore glob rules
 
-# AI Agent skills, workflows & system prompts
+# 1. Dependency directories & package caches
+node_modules/**
+vendor/**
+bower_components/**
+.pnpm-store/**
+
+# 2. Build & distribution artifacts
+dist/**
+dist-*/**
+build/**
+out/**
+bin/**
+obj/**
+www/**
+wwwroot/**
+.cache/**
+coverage/**
+.nyc_output/**
+
+# 3. AI Agent skills, workflows & system prompts
 .github/skills/**
 .github/instructions/**
 .github/prompts/**
@@ -178,24 +82,67 @@ var RECOMMENDED_CODESEARCHIGNORE = `# code-search-mcp ignore patterns
 **/skills/**
 **/.agents/**
 
-# Test fixtures, snapshots and mocks
+# 4. Test fixtures, snapshots and mocks
 **/fixtures/**
 **/__snapshots__/**
 **/mocks/**
 *.snap
 
-# Generated code and type declarations
+# 5. Generated code and type declarations
 *.generated.*
 *.d.ts.map
 
-# Build, cache and bundle output
-dist/**
-build/**
-.cache/**
+# 6. Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+composer.lock
+Gemfile.lock
+Cargo.lock
+packages.lock.json
 
-# Documentation assets & media
-docs/images/**
-docs/assets/**
+# 7. Minified code and source maps
+*.min.js
+*.min.css
+*.map
+
+# 8. Binary assets, archives and OS metadata
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.cur
+*.svg
+*.woff
+*.woff2
+*.ttf
+*.eot
+*.otf
+*.mp3
+*.mp4
+*.wav
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+*.pdf
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+*.DS_Store
+Thumbs.db
+
+# 9. IDE & tooling metadata
+.idea/**
+.vscode/**
+.gemini/**
+.claude/**
+.codegraph/**
+.vectorcode/**
 `;
 
 // src/config/loader.ts
@@ -2141,4 +2088,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-TW6ZKPYI.js.map
+//# sourceMappingURL=chunk-KK3XJQRV.js.map

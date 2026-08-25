@@ -8,8 +8,10 @@ import { loadConfig } from '../src/config/loader.js';
 describe('File Scanner', () => {
   let tempDir: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const { RECOMMENDED_CODESEARCHIGNORE } = await import('../src/config/defaults.js');
     tempDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'scanner-test-')));
+    fs.writeFileSync(path.join(tempDir, '.codesearchignore'), RECOMMENDED_CODESEARCHIGNORE);
     fs.mkdirSync(path.join(tempDir, 'src'), { recursive: true });
     fs.mkdirSync(path.join(tempDir, 'node_modules', 'lib'), { recursive: true });
     fs.writeFileSync(path.join(tempDir, 'src', 'index.ts'), 'console.log("hello");');
@@ -47,7 +49,10 @@ describe('File Scanner', () => {
     expect(result.unchangedFilesCount).toBe(1);
   });
 
-  it('should ignore agent skills and prompts directories by default', async () => {
+  it('should ignore agent skills and prompts when listed in .codesearchignore', async () => {
+    const { RECOMMENDED_CODESEARCHIGNORE } = await import('../src/config/defaults.js');
+    fs.writeFileSync(path.join(tempDir, '.codesearchignore'), RECOMMENDED_CODESEARCHIGNORE);
+
     fs.mkdirSync(path.join(tempDir, '.github', 'skills'), { recursive: true });
     fs.writeFileSync(path.join(tempDir, '.github', 'skills', 'browser-automation.md'), '# Browser Automation');
     fs.writeFileSync(path.join(tempDir, 'docs.md'), '# Architecture Docs');
