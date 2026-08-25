@@ -81,12 +81,18 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
   }
 
   // 3. Search Ignore File (.codesearchignore)
-  let createIgnoreFile = options.createIgnoreFile ?? true;
+  const ignoreFilePath = path.join(canonicalRoot, '.codesearchignore');
+  const ignoreFileExists = fs.existsSync(ignoreFilePath);
+  let createIgnoreFile = options.createIgnoreFile ?? !ignoreFileExists;
   if (isInteractive && options.createIgnoreFile === undefined) {
-    createIgnoreFile = await confirm({
-      message: 'Create a .codesearchignore file with recommended excludes (fixtures, mocks, minified code)?',
-      default: true
-    });
+    if (!ignoreFileExists) {
+      createIgnoreFile = await confirm({
+        message: 'Create a .codesearchignore file with recommended excludes (fixtures, mocks, minified code)?',
+        default: true
+      });
+    } else {
+      createIgnoreFile = false;
+    }
   }
 
   // 4. Extension Detection & Customization
@@ -183,7 +189,6 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
   }
 
   // 7. Write .codesearchignore
-  const ignoreFilePath = path.join(canonicalRoot, '.codesearchignore');
   if (createIgnoreFile && !fs.existsSync(ignoreFilePath)) {
     fs.writeFileSync(ignoreFilePath, RECOMMENDED_CODESEARCHIGNORE, 'utf8');
     if (isInteractive) {

@@ -1513,12 +1513,18 @@ async function runInit(options = {}) {
       default: true
     });
   }
-  let createIgnoreFile = options.createIgnoreFile ?? true;
+  const ignoreFilePath = path8.join(canonicalRoot, ".codesearchignore");
+  const ignoreFileExists = fs8.existsSync(ignoreFilePath);
+  let createIgnoreFile = options.createIgnoreFile ?? !ignoreFileExists;
   if (isInteractive && options.createIgnoreFile === void 0) {
-    createIgnoreFile = await confirm({
-      message: "Create a .codesearchignore file with recommended excludes (fixtures, mocks, minified code)?",
-      default: true
-    });
+    if (!ignoreFileExists) {
+      createIgnoreFile = await confirm({
+        message: "Create a .codesearchignore file with recommended excludes (fixtures, mocks, minified code)?",
+        default: true
+      });
+    } else {
+      createIgnoreFile = false;
+    }
   }
   let supportedExtensions = options.supportedExtensions;
   if (!supportedExtensions) {
@@ -1595,7 +1601,6 @@ async function runInit(options = {}) {
   if (isInteractive) {
     console.log(`\u2705 Saved configuration to ${rcPath}`);
   }
-  const ignoreFilePath = path8.join(canonicalRoot, ".codesearchignore");
   if (createIgnoreFile && !fs8.existsSync(ignoreFilePath)) {
     fs8.writeFileSync(ignoreFilePath, RECOMMENDED_CODESEARCHIGNORE, "utf8");
     if (isInteractive) {
@@ -1943,4 +1948,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-2EER2VDI.js.map
+//# sourceMappingURL=chunk-VGHYOBPR.js.map

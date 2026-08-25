@@ -49,6 +49,20 @@ describe('runInit & runUninit', () => {
     expect(gitignore).toContain('.code-search/');
   });
 
+  it('preserves existing .codesearchignore file and does not overwrite it', async () => {
+    const customIgnoreContent = '# custom pre-existing ignore rules\ncustom-dir/**\n';
+    fs.writeFileSync(path.join(tempDir, '.codesearchignore'), customIgnoreContent, 'utf8');
+
+    await runInit({
+      projectRoot: tempDir,
+      yes: true,
+      skipIndex: true
+    });
+
+    const ignoreContentAfter = fs.readFileSync(path.join(tempDir, '.codesearchignore'), 'utf8');
+    expect(ignoreContentAfter).toBe(customIgnoreContent);
+  });
+
   it('uninit cleans up config, ignore file, and index folder', async () => {
     await runInit({
       projectRoot: tempDir,
