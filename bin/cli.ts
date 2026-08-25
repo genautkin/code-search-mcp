@@ -196,6 +196,9 @@ program
 
       process.on('SIGINT', handleExit);
       process.on('SIGTERM', handleExit);
+      process.on('SIGHUP', handleExit);
+      process.stdin.on('end', handleExit);
+      process.stdin.on('close', handleExit);
 
       await start();
       logger.info('MCP Server started on stdio');

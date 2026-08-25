@@ -360,6 +360,9 @@ program.option("-p, --path <path>", "Project root directory to index and search"
     };
     process.on("SIGINT", handleExit);
     process.on("SIGTERM", handleExit);
+    process.on("SIGHUP", handleExit);
+    process.stdin.on("end", handleExit);
+    process.stdin.on("close", handleExit);
     await start();
     logger.info("MCP Server started on stdio");
     process.stderr.write(`[code-search-mcp] MCP Server running on stdio.
