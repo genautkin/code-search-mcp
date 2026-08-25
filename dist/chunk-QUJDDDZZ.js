@@ -1125,7 +1125,7 @@ var IndexerWorker = class {
   getStatus() {
     return { ...this.status };
   }
-  async startIndexing(forceFull = false) {
+  async startIndexing(forceFull = false, onProgress) {
     if (this.isRunning) {
       return;
     }
@@ -1137,12 +1137,14 @@ var IndexerWorker = class {
       this.status.totalFiles = stats.size;
       this.status.state = "ready";
       this.status.progressPercentage = stats.size > 0 ? 100 : 0;
+      onProgress?.({ ...this.status });
       return;
     }
     this.isRunning = true;
     try {
       this.status.state = "scanning";
       this.status.error = void 0;
+      onProgress?.({ ...this.status });
       if (forceFull) {
         await this.store.clear();
       }
@@ -1154,15 +1156,18 @@ var IndexerWorker = class {
       this.status.totalFiles = scan.totalFilesCount;
       this.status.indexedFiles = scan.unchangedFilesCount;
       this.status.progressPercentage = scan.totalFilesCount === 0 ? 100 : Math.round(scan.unchangedFilesCount / scan.totalFilesCount * 100);
+      onProgress?.({ ...this.status });
       if (scan.filesToIndex.length === 0) {
         this.status.state = "ready";
         this.status.progressPercentage = 100;
         this.status.lastIndexedAt = Date.now();
         this.status.indexedChunks = await this.store.count();
         this.isRunning = false;
+        onProgress?.({ ...this.status });
         return;
       }
       this.status.state = "indexing";
+      onProgress?.({ ...this.status });
       let processedInScan = 0;
       const batchSize = this.config.batchSize;
       for (let i = 0; i < scan.filesToIndex.length; i += batchSize) {
@@ -1198,16 +1203,19 @@ var IndexerWorker = class {
         this.status.progressPercentage = Math.round(
           this.status.indexedFiles / scan.totalFilesCount * 100
         );
+        onProgress?.({ ...this.status });
       }
       this.status.state = "ready";
       this.status.progressPercentage = 100;
       this.status.lastIndexedAt = Date.now();
       this.status.currentFile = void 0;
       this.status.indexedChunks = await this.store.count();
+      onProgress?.({ ...this.status });
     } catch (err) {
       this.status.state = "error";
       this.status.error = err?.message || String(err);
       console.error("[code-search-mcp] Indexing worker error:", err);
+      onProgress?.({ ...this.status });
     } finally {
       this.isRunning = false;
       this.lock.release();
@@ -1951,4 +1959,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-CEBA2H63.js.map
+//# sourceMappingURL=chunk-QUJDDDZZ.js.map

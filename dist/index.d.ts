@@ -186,7 +186,7 @@ declare class IndexerWorker {
     constructor(config: CodeSearchConfig);
     init(): Promise<void>;
     getStatus(): IndexStatus;
-    startIndexing(forceFull?: boolean): Promise<void>;
+    startIndexing(forceFull?: boolean, onProgress?: (status: IndexStatus) => void): Promise<void>;
     indexSingleFile(relativePath: string, absolutePath?: string): Promise<void>;
     removeSingleFile(relativePath: string): Promise<void>;
     query(queryText: string, options?: number | SearchOptions): Promise<{

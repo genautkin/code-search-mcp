@@ -93,9 +93,27 @@ program
       console.log('\n🚀 Starting search indexing...');
       const res = await runIndexCmd({
         projectRoot: targetPath,
-        forceFull: options.force
+        forceFull: options.force,
+        onProgress: (status) => {
+          if (status.state === 'scanning') {
+            process.stdout.write(`\r🔍 Scanning project files...`);
+          } else if (status.state === 'indexing') {
+            const current = status.currentFile ? ` (${status.currentFile})` : '';
+            process.stdout.write(
+              `\r⚡️ Indexing: ${status.indexedFiles}/${status.totalFiles} files (${status.progressPercentage}%)${current}   `
+            );
+          }
+        }
       });
-      console.log(`✨ Indexing complete! (${res.status.indexedFiles} files, ${res.status.indexedChunks} chunks indexed)\n`);
+      process.stdout.write('\r\x1b[K'); // Clear line
+
+      console.log(`\n✨ Indexing completed successfully!`);
+      console.log(`📊 Index Summary:`);
+      console.log(`  State: ${res.status.state.toUpperCase()}`);
+      console.log(`  Indexed Files: ${res.status.indexedFiles} / ${res.status.totalFiles}`);
+      console.log(`  Indexed Chunks: ${res.status.indexedChunks} vectors in LanceDB`);
+      console.log(`  Database Path: ${res.config.dbPath}`);
+      console.log(`  Embedding Model: ${res.config.embeddingModel}\n`);
     } catch (err: any) {
       console.error(`\n❌ Error indexing project: ${err?.message || err}\n`);
       process.exit(1);

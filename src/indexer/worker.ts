@@ -47,7 +47,10 @@ export class IndexerWorker {
     return { ...this.status };
   }
 
-  public async startIndexing(forceFull = false): Promise<void> {
+  public async startIndexing(
+    forceFull = false,
+    onProgress?: (status: IndexStatus) => void
+  ): Promise<void> {
     if (this.isRunning) {
       return;
     }
@@ -60,6 +63,7 @@ export class IndexerWorker {
       this.status.totalFiles = stats.size;
       this.status.state = 'ready';
       this.status.progressPercentage = stats.size > 0 ? 100 : 0;
+      onProgress?.({ ...this.status });
       return;
     }
 
@@ -68,6 +72,7 @@ export class IndexerWorker {
     try {
       this.status.state = 'scanning';
       this.status.error = undefined;
+      onProgress?.({ ...this.status });
 
       if (forceFull) {
         await this.store.clear();
@@ -85,6 +90,7 @@ export class IndexerWorker {
       this.status.indexedFiles = scan.unchangedFilesCount;
       this.status.progressPercentage =
         scan.totalFilesCount === 0 ? 100 : Math.round((scan.unchangedFilesCount / scan.totalFilesCount) * 100);
+      onProgress?.({ ...this.status });
 
       if (scan.filesToIndex.length === 0) {
         this.status.state = 'ready';
@@ -92,10 +98,12 @@ export class IndexerWorker {
         this.status.lastIndexedAt = Date.now();
         this.status.indexedChunks = await this.store.count();
         this.isRunning = false;
+        onProgress?.({ ...this.status });
         return;
       }
 
       this.status.state = 'indexing';
+      onProgress?.({ ...this.status });
 
       let processedInScan = 0;
       const batchSize = this.config.batchSize;
@@ -139,6 +147,7 @@ export class IndexerWorker {
         this.status.progressPercentage = Math.round(
           (this.status.indexedFiles / scan.totalFilesCount) * 100
         );
+        onProgress?.({ ...this.status });
       }
 
       this.status.state = 'ready';
@@ -146,10 +155,12 @@ export class IndexerWorker {
       this.status.lastIndexedAt = Date.now();
       this.status.currentFile = undefined;
       this.status.indexedChunks = await this.store.count();
+      onProgress?.({ ...this.status });
     } catch (err: any) {
       this.status.state = 'error';
       this.status.error = err?.message || String(err);
       console.error('[code-search-mcp] Indexing worker error:', err);
+      onProgress?.({ ...this.status });
     } finally {
       this.isRunning = false;
       this.lock.release();

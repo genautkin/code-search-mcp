@@ -6,7 +6,7 @@ import {
   isProjectInitialized,
   loadConfig,
   runInit
-} from "../chunk-CEBA2H63.js";
+} from "../chunk-QUJDDDZZ.js";
 
 // bin/cli.ts
 import { Command } from "commander";
@@ -173,16 +173,17 @@ async function runIndexCmd(options = {}) {
   }
   const initialized = isProjectInitialized(canonicalRoot);
   if (!initialized) {
-    throw new Error(`Project is not initialized. Run 'code-search init' first.`);
+    throw new Error(`Project at ${canonicalRoot} is not initialized. Run 'code-search-mcp init' first.`);
   }
   const config = loadConfig(canonicalRoot);
   const worker = new IndexerWorker(config);
   await worker.init();
-  await worker.startIndexing(Boolean(options.forceFull));
+  await worker.startIndexing(Boolean(options.forceFull), options.onProgress);
   const status = worker.getStatus();
   return {
     success: true,
-    status
+    status,
+    config
   };
 }
 
@@ -271,9 +272,27 @@ program.command("index [path]").description("Rebuild or update the search index 
     console.log("\n\u{1F680} Starting search indexing...");
     const res = await runIndexCmd({
       projectRoot: targetPath,
-      forceFull: options.force
+      forceFull: options.force,
+      onProgress: (status) => {
+        if (status.state === "scanning") {
+          process.stdout.write(`\r\u{1F50D} Scanning project files...`);
+        } else if (status.state === "indexing") {
+          const current = status.currentFile ? ` (${status.currentFile})` : "";
+          process.stdout.write(
+            `\r\u26A1\uFE0F Indexing: ${status.indexedFiles}/${status.totalFiles} files (${status.progressPercentage}%)${current}   `
+          );
+        }
+      }
     });
-    console.log(`\u2728 Indexing complete! (${res.status.indexedFiles} files, ${res.status.indexedChunks} chunks indexed)
+    process.stdout.write("\r\x1B[K");
+    console.log(`
+\u2728 Indexing completed successfully!`);
+    console.log(`\u{1F4CA} Index Summary:`);
+    console.log(`  State: ${res.status.state.toUpperCase()}`);
+    console.log(`  Indexed Files: ${res.status.indexedFiles} / ${res.status.totalFiles}`);
+    console.log(`  Indexed Chunks: ${res.status.indexedChunks} vectors in LanceDB`);
+    console.log(`  Database Path: ${res.config.dbPath}`);
+    console.log(`  Embedding Model: ${res.config.embeddingModel}
 `);
   } catch (err) {
     console.error(`
