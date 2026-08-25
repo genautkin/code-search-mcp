@@ -348,21 +348,22 @@ program.option("-p, --path <path>", "Project root directory to index and search"
 `);
     const { start, stop } = await createMcpServer(config);
     let isExiting = false;
-    const handleExit = async () => {
+    const handleExit = (source) => {
       if (isExiting) return;
       isExiting = true;
       try {
-        logger.info("Stopping code-search-mcp session", { pid: process.pid });
-        await stop();
+        logger.info(`Stopping code-search-mcp session (${source || "unknown"})`, { pid: process.pid });
+        stop().catch(() => {
+        });
       } catch {
       }
       process.exit(0);
     };
-    process.on("SIGINT", handleExit);
-    process.on("SIGTERM", handleExit);
-    process.on("SIGHUP", handleExit);
-    process.stdin.on("end", handleExit);
-    process.stdin.on("close", handleExit);
+    process.on("SIGINT", () => handleExit("SIGINT"));
+    process.on("SIGTERM", () => handleExit("SIGTERM"));
+    process.on("SIGHUP", () => handleExit("SIGHUP"));
+    process.stdin.on("end", () => handleExit("stdin-end"));
+    process.stdin.on("close", () => handleExit("stdin-close"));
     await start();
     logger.info("MCP Server started on stdio");
     process.stderr.write(`[code-search-mcp] MCP Server running on stdio.
