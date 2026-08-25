@@ -190,6 +190,7 @@ declare class IndexerWorker {
     private isRunning;
     private lock;
     constructor(config: CodeSearchConfig);
+    private isInitialized;
     init(): Promise<void>;
     getStatus(): IndexStatus;
     startIndexing(forceFull?: boolean, onProgress?: (status: IndexStatus) => void): Promise<void>;

@@ -30,7 +30,10 @@ export class IndexerWorker {
     };
   }
 
+  private isInitialized = false;
+
   public async init(): Promise<void> {
+    if (this.isInitialized) return;
     await this.store.init();
     const count = await this.store.count();
     const stats = await this.store.getIndexedFileStats();
@@ -41,6 +44,7 @@ export class IndexerWorker {
       this.status.state = 'ready';
       this.status.progressPercentage = 100;
     }
+    this.isInitialized = true;
   }
 
   public getStatus(): IndexStatus {
@@ -51,6 +55,10 @@ export class IndexerWorker {
     forceFull = false,
     onProgress?: (status: IndexStatus) => void
   ): Promise<void> {
+    if (!this.isInitialized) {
+      await this.init();
+    }
+
     if (this.isRunning) {
       return;
     }
@@ -168,6 +176,9 @@ export class IndexerWorker {
   }
 
   public async indexSingleFile(relativePath: string, absolutePath?: string): Promise<void> {
+    if (!this.isInitialized) {
+      await this.init();
+    }
     const absPath = absolutePath || path.join(this.config.projectRoot, relativePath);
     const normRelPath = normalizePath(relativePath);
 
@@ -198,6 +209,9 @@ export class IndexerWorker {
   }
 
   public async removeSingleFile(relativePath: string): Promise<void> {
+    if (!this.isInitialized) {
+      await this.init();
+    }
     const normRelPath = normalizePath(relativePath);
     await this.store.deleteByFilePath(normRelPath);
   }
@@ -210,6 +224,9 @@ export class IndexerWorker {
     results: SearchResult[];
     formattedOutput: string;
   }> {
+    if (!this.isInitialized) {
+      await this.init();
+    }
     const opts: SearchOptions = typeof options === 'number' ? { limit: options } : (options || {});
     const queryVector = await this.embeddings.embedText(queryText);
     const results = await this.store.search(queryVector, opts, queryText);

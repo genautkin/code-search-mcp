@@ -23,14 +23,22 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
   let worker = new IndexerWorker(currentConfig);
   let watcher = new FileWatcher(currentConfig, worker);
 
-  if (isInit) {
-    await worker.init();
-  }
+  let initPromise: Promise<void> | null = null;
+  const ensureInitialized = async (): Promise<void> => {
+    if (!initPromise) {
+      initPromise = (async () => {
+        if (isInit) {
+          await worker.init();
+        }
+      })();
+    }
+    return initPromise;
+  };
 
   const server = new Server(
     {
       name: 'code-search-mcp',
-      version: '0.1.0'
+      version: '0.2.0'
     },
     {
       capabilities: {
@@ -201,6 +209,8 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
         };
       }
 
+      await ensureInitialized();
+
       const query = (args?.query as string) || '';
       const limit = typeof args?.limit === 'number' ? args.limit : 10;
       const pathFilter = typeof args?.pathFilter === 'string' ? args.pathFilter : undefined;
@@ -247,6 +257,7 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
         };
       }
 
+      await ensureInitialized();
       const status = worker.getStatus();
       const text = [
         `Index Status: ${status.state.toUpperCase()}`,
@@ -282,6 +293,7 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
         };
       }
 
+      await ensureInitialized();
       const forceFull = Boolean(args?.forceFull);
       worker.startIndexing(forceFull).catch((err) => {
         console.error('[code-search-mcp] Reindex error:', err);
@@ -333,13 +345,14 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
     await server.connect(transport);
 
     if (isInit) {
-      // Start background file watcher
-      await watcher.start();
-
-      // Start initial background indexing
-      worker.startIndexing().catch((err) => {
-        console.error('[code-search-mcp] Initial background index failed:', err);
-      });
+      // Non-blocking background worker init and file watcher
+      void (async () => {
+        try {
+          await ensureInitialized();
+          await watcher.start();
+          await worker.startIndexing();
+        } catch {}
+      })();
     }
   };
 

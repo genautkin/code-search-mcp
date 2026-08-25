@@ -1230,7 +1230,9 @@ var IndexerWorker = class {
       indexedChunks: 0
     };
   }
+  isInitialized = false;
   async init() {
+    if (this.isInitialized) return;
     await this.store.init();
     const count = await this.store.count();
     const stats = await this.store.getIndexedFileStats();
@@ -1241,11 +1243,15 @@ var IndexerWorker = class {
       this.status.state = "ready";
       this.status.progressPercentage = 100;
     }
+    this.isInitialized = true;
   }
   getStatus() {
     return { ...this.status };
   }
   async startIndexing(forceFull = false, onProgress) {
+    if (!this.isInitialized) {
+      await this.init();
+    }
     if (this.isRunning) {
       return;
     }
@@ -1342,6 +1348,9 @@ var IndexerWorker = class {
     }
   }
   async indexSingleFile(relativePath, absolutePath) {
+    if (!this.isInitialized) {
+      await this.init();
+    }
     const absPath = absolutePath || path5.join(this.config.projectRoot, relativePath);
     const normRelPath = normalizePath(relativePath);
     if (!fs5.existsSync(absPath)) {
@@ -1363,10 +1372,16 @@ var IndexerWorker = class {
     await this.store.insertChunks(chunks);
   }
   async removeSingleFile(relativePath) {
+    if (!this.isInitialized) {
+      await this.init();
+    }
     const normRelPath = normalizePath(relativePath);
     await this.store.deleteByFilePath(normRelPath);
   }
   async query(queryText, options) {
+    if (!this.isInitialized) {
+      await this.init();
+    }
     const opts = typeof options === "number" ? { limit: options } : options || {};
     const queryVector = await this.embeddings.embedText(queryText);
     const results = await this.store.search(queryVector, opts, queryText);
@@ -1853,13 +1868,21 @@ async function createMcpServer(initialConfig) {
   let isInit = isProjectInitialized(currentConfig.projectRoot);
   let worker = new IndexerWorker(currentConfig);
   let watcher = new FileWatcher(currentConfig, worker);
-  if (isInit) {
-    await worker.init();
-  }
+  let initPromise = null;
+  const ensureInitialized = async () => {
+    if (!initPromise) {
+      initPromise = (async () => {
+        if (isInit) {
+          await worker.init();
+        }
+      })();
+    }
+    return initPromise;
+  };
   const server = new Server(
     {
       name: "code-search-mcp",
-      version: "0.1.0"
+      version: "0.2.0"
     },
     {
       capabilities: {
@@ -2021,6 +2044,7 @@ To enable semantic search:
           ]
         };
       }
+      await ensureInitialized();
       const query = args?.query || "";
       const limit = typeof args?.limit === "number" ? args.limit : 10;
       const pathFilter = typeof args?.pathFilter === "string" ? args.pathFilter : void 0;
@@ -2063,6 +2087,7 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
           ]
         };
       }
+      await ensureInitialized();
       const status = worker.getStatus();
       const text = [
         `Index Status: ${status.state.toUpperCase()}`,
@@ -2093,6 +2118,7 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
           ]
         };
       }
+      await ensureInitialized();
       const forceFull = Boolean(args?.forceFull);
       worker.startIndexing(forceFull).catch((err) => {
         console.error("[code-search-mcp] Reindex error:", err);
@@ -2136,10 +2162,14 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
     };
     await server.connect(transport);
     if (isInit) {
-      await watcher.start();
-      worker.startIndexing().catch((err) => {
-        console.error("[code-search-mcp] Initial background index failed:", err);
-      });
+      void (async () => {
+        try {
+          await ensureInitialized();
+          await watcher.start();
+          await worker.startIndexing();
+        } catch {
+        }
+      })();
     }
   };
   const stop = async () => {
@@ -2179,4 +2209,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-E7CFPO2K.js.map
+//# sourceMappingURL=chunk-UJ2WUGP5.js.map
