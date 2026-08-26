@@ -59,7 +59,7 @@ To build an ultra-low-latency, zero-external-dependency **Hybrid Code Search Eng
 To guarantee high precision for both fuzzy natural language intent and exact symbol matching, the engine runs a **Hybrid Two-Tower Retrieval Pipeline**:
 
 ```
-                       User Query: "trade from chart bridge openSidebar"
+                       User Query: "how to cancel user billing subscription"
                                       │
                ┌──────────────────────┴──────────────────────┐
                ▼                                             ▼
@@ -82,8 +82,8 @@ To guarantee high precision for both fuzzy natural language intent and exact sym
 ```
 
 ### A. Sub-tokenization & Morphological Expansion
-1. **Token Decomposition**: Splits compounds (`TradeFromChart` $\rightarrow$ `['trade', 'from', 'chart']`, `open_sidebar` $\rightarrow$ `['open', 'sidebar']`).
-2. **Algorithmic Stemming**: Uses Porter Stemming algorithm to match morphological variants (`indexing` $\leftrightarrow$ `index`, `orchestrator` $\leftrightarrow$ `orchestrate`).
+1. **Token Decomposition**: Splits compounds (`SubscriptionManager` $\rightarrow$ `['subscription', 'manager']`, `cancel_billing` $\rightarrow$ `['cancel', 'billing']`).
+2. **Algorithmic Stemming**: Uses Porter Stemming algorithm to match morphological variants (`indexing` $\leftrightarrow$ `index`, `cancelling` $\leftrightarrow$ `cancel`).
 
 ### B. Scoring & Fusion Function
 The final relevance score $S_{\text{final}}$ is computed via hybrid score interpolation:

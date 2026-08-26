@@ -73,11 +73,11 @@ An open-source, local-first tool that runs completely on-device, indexes reposit
 1. **Sliding Window Chunking**: Source files are chunked into 60-line sliding blocks with a 15-line overlap to preserve surrounding function headers and enclosing class context.
 2. **Semantic Breadcrumb Injection**: Before vector generation, each chunk is prefixed with contextual metadata:
    ```typescript
-   // File: src/CFDTrading/Trade/BuySell/Services/trade-from-chart-bridge.service.ts
+   // File: src/billing/services/subscription-manager.service.ts
    // Language: typescript
-   export class TradeFromChartBridge { ... }
+   export class SubscriptionManager { ... }
    ```
-   This ensures vectors encode organizational and architectural intent (e.g. `CFDTrading`, `Services`, `Controllers`).
+   This ensures vectors encode organizational and architectural intent (e.g. `billing`, `services`, `controllers`).
 
 3. **Incremental Inode Hashing**: An MD5 content hash is stored alongside each chunk. During re-scans, unchanged files are verified in $O(1)$ and skipped, reducing incremental indexing times to milliseconds.
 
@@ -97,7 +97,7 @@ An open-source, local-first tool that runs completely on-device, indexes reposit
 To achieve high precision across both semantic conceptual queries and exact keyword/symbol searches, the engine utilizes a **Two-Tower Hybrid Retrieval Architecture**:
 
 ```
-                       User Query: "trade from chart bridge openSidebar"
+                       User Query: "how to cancel user billing subscription"
                                       │
                ┌──────────────────────┴──────────────────────┐
                ▼                                             ▼
@@ -120,7 +120,7 @@ To achieve high precision across both semantic conceptual queries and exact keyw
 ```
 
 1. **Sub-Token Decomposition & Stemming**:
-   - PascalCase/camelCase tokens (`TradeFromChartBridge`) are split into `['trade', 'from', 'chart', 'bridge']`.
+   - PascalCase/camelCase tokens (`SubscriptionManager`) are split into `['subscription', 'manager']`.
    - Porter Stemming maps terms (`orchestrator` $\rightarrow$ `orchestr`, `cancelling` $\rightarrow$ `cancel`).
 2. **Score Fusion Formula**:
    $$S_{\text{final}} = \left( 0.6 \cdot S_{\text{vector}} + 0.4 \cdot \frac{|T_{\text{query}} \cap T_{\text{doc}}|}{|T_{\text{query}}|} \right) + 0.3 \cdot S_{\text{lexical}}$$
@@ -151,9 +151,9 @@ To achieve high precision across both semantic conceptual queries and exact keyw
 
 ---
 
-## 5. Real-World Enterprise Benchmark (`IVS.WebApp`)
+## 5. Real-World Enterprise Benchmark (Large-Scale Repository)
 
-Tested against the production enterprise repository `/Users/gennadiy.utkin/Documents/Dev/WebApp/IVS.WebApp/IVS.WebApp`:
+Tested against a multi-framework production repository containing over 5,000 source files across TypeScript, C#, and Vue:
 
 | Metric | Before Optimization | After Optimization |
 | :--- | :--- | :--- |
