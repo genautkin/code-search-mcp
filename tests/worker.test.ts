@@ -75,4 +75,16 @@ describe('Indexer Worker & Query Flow', () => {
     expect(res.results[0].filePath).toBe('src/auth.ts');
     expect(res.results[0].content).toContain('logoutUserSession');
   }, 60000);
+
+  it('should support both fast mode and gentle mode options', async () => {
+    await worker.startIndexing({ forceFull: true, mode: 'gentle', batchDelayMs: 5 });
+    let status = worker.getStatus();
+    expect(status.state).toBe('ready');
+    expect(status.indexedFiles).toBe(2);
+
+    await worker.startIndexing({ forceFull: false, mode: 'fast' });
+    status = worker.getStatus();
+    expect(status.state).toBe('ready');
+    expect(status.indexedFiles).toBe(2);
+  }, 60000);
 });

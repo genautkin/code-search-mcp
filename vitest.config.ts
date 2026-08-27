@@ -5,6 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     testTimeout: 30000,
-    fileParallelism: false
+    fileParallelism: false,
+    include: ['tests/**/*.test.ts'],
+    exclude: ['**/node_modules/**', '**/.worktrees/**']
   }
 });

@@ -291,7 +291,7 @@ var EmbeddingEngine = class _EmbeddingEngine {
   async getExtractor() {
     if (!this.extractorPromise) {
       this.extractorPromise = pipeline("feature-extraction", this.modelName, {
-        dtype: "fp32"
+        dtype: "q8"
       });
     }
     return this.extractorPromise;
@@ -1266,7 +1266,11 @@ var IndexerWorker = class {
   getStatus() {
     return { ...this.status };
   }
-  async startIndexing(forceFull = false, onProgress) {
+  async startIndexing(optionsOrForceFull = false, onProgress) {
+    const options = typeof optionsOrForceFull === "boolean" ? { forceFull: optionsOrForceFull, mode: "gentle" } : { mode: "gentle", ...optionsOrForceFull };
+    const forceFull = Boolean(options.forceFull);
+    const mode = options.mode || "gentle";
+    const batchDelayMs = options.batchDelayMs !== void 0 ? options.batchDelayMs : mode === "gentle" ? 50 : 0;
     if (!this.isInitialized) {
       await this.init();
     }
@@ -1348,6 +1352,10 @@ var IndexerWorker = class {
           this.status.indexedFiles / scan.totalFilesCount * 100
         );
         onProgress?.({ ...this.status });
+        await new Promise((resolve5) => setImmediate(resolve5));
+        if (batchDelayMs > 0 && i + batchSize < scan.filesToIndex.length) {
+          await new Promise((resolve5) => setTimeout(resolve5, batchDelayMs));
+        }
       }
       this.status.state = "ready";
       this.status.progressPercentage = 100;
@@ -1879,7 +1887,7 @@ async function runInit(options = {}) {
     const config = loadConfig(canonicalRoot);
     const worker = new IndexerWorker(config);
     await worker.init();
-    await worker.startIndexing(cleanExisting);
+    await worker.startIndexing({ forceFull: cleanExisting, mode: "fast" });
     if (isInteractive) {
       const status = worker.getStatus();
       console.log(`\u2728 Initial indexing completed! (${status.indexedFiles} files, ${status.indexedChunks} chunks indexed)`);
@@ -1919,7 +1927,7 @@ async function createMcpServer(initialConfig) {
   const server = new Server(
     {
       name: "code-search-mcp",
-      version: "0.2.0"
+      version: "0.2.1"
     },
     {
       capabilities: {
@@ -1970,13 +1978,18 @@ async function createMcpServer(initialConfig) {
         },
         {
           name: "code_search_reindex",
-          description: "Trigger a background re-index of the repository. Can be used to force a full reindex.",
+          description: "Trigger a re-index of the repository. Defaults to fast mode when manually requested.",
           inputSchema: {
             type: "object",
             properties: {
               forceFull: {
                 type: "boolean",
                 description: "If true, clears existing vector database and rebuilds index from scratch"
+              },
+              mode: {
+                type: "string",
+                enum: ["fast", "gentle"],
+                description: 'Indexing mode: "fast" (default for manual trigger) or "gentle" (low-CPU background mode)'
               }
             }
           }
@@ -2157,14 +2170,15 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
       }
       await ensureInitialized();
       const forceFull = Boolean(args?.forceFull);
-      worker.startIndexing(forceFull).catch((err) => {
+      const mode = args?.mode || "fast";
+      worker.startIndexing({ forceFull, mode }).catch((err) => {
         console.error("[code-search-mcp] Reindex error:", err);
       });
       return {
         content: [
           {
             type: "text",
-            text: `Indexing started in background (forceFull: ${forceFull}). Use code_search_status to monitor progress.`
+            text: `Indexing started in background (mode: ${mode}, forceFull: ${forceFull}). Use code_search_status to monitor progress.`
           }
         ]
       };
@@ -2203,7 +2217,7 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
         try {
           await ensureInitialized();
           await watcher.start();
-          await worker.startIndexing();
+          await worker.startIndexing({ forceFull: false, mode: "gentle" });
         } catch {
         }
       })();
@@ -2246,4 +2260,4 @@ export {
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-DC2V65L7.js.map
+//# sourceMappingURL=chunk-FHDA22QB.js.map

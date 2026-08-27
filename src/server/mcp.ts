@@ -38,7 +38,7 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
   const server = new Server(
     {
       name: 'code-search-mcp',
-      version: '0.2.0'
+      version: '0.2.1'
     },
     {
       capabilities: {
@@ -93,13 +93,18 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
         {
           name: 'code_search_reindex',
           description:
-            'Trigger a background re-index of the repository. Can be used to force a full reindex.',
+            'Trigger a re-index of the repository. Defaults to fast mode when manually requested.',
           inputSchema: {
             type: 'object',
             properties: {
               forceFull: {
                 type: 'boolean',
                 description: 'If true, clears existing vector database and rebuilds index from scratch'
+              },
+              mode: {
+                type: 'string',
+                enum: ['fast', 'gentle'],
+                description: 'Indexing mode: "fast" (default for manual trigger) or "gentle" (low-CPU background mode)'
               }
             }
           }
@@ -295,7 +300,8 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
 
       await ensureInitialized();
       const forceFull = Boolean(args?.forceFull);
-      worker.startIndexing(forceFull).catch((err) => {
+      const mode = (args?.mode as 'fast' | 'gentle') || 'fast';
+      worker.startIndexing({ forceFull, mode }).catch((err) => {
         console.error('[code-search-mcp] Reindex error:', err);
       });
 
@@ -303,7 +309,7 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
         content: [
           {
             type: 'text',
-            text: `Indexing started in background (forceFull: ${forceFull}). Use code_search_status to monitor progress.`
+            text: `Indexing started in background (mode: ${mode}, forceFull: ${forceFull}). Use code_search_status to monitor progress.`
           }
         ]
       };
@@ -345,12 +351,12 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
     await server.connect(transport);
 
     if (isInit) {
-      // Non-blocking background worker init and file watcher
+      // Non-blocking background worker init and file watcher (gentle mode for startup / branch switch)
       void (async () => {
         try {
           await ensureInitialized();
           await watcher.start();
-          await worker.startIndexing();
+          await worker.startIndexing({ forceFull: false, mode: 'gentle' });
         } catch {}
       })();
     }

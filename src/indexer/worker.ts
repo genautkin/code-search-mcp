@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { CodeChunk, CodeSearchConfig, IndexStatus, SearchOptions, SearchResult } from '../types.js';
+import { CodeChunk, CodeSearchConfig, IndexStatus, SearchOptions, SearchResult, StartIndexingOptions } from '../types.js';
 import { VectorStore } from '../store/lancedb.js';
 import { EmbeddingEngine } from '../embeddings/engine.js';
 import { scanDirectory } from './scanner.js';
@@ -52,9 +52,19 @@ export class IndexerWorker {
   }
 
   public async startIndexing(
-    forceFull = false,
+    optionsOrForceFull: boolean | StartIndexingOptions = false,
     onProgress?: (status: IndexStatus) => void
   ): Promise<void> {
+    const options: StartIndexingOptions =
+      typeof optionsOrForceFull === 'boolean'
+        ? { forceFull: optionsOrForceFull, mode: 'gentle' }
+        : { mode: 'gentle', ...optionsOrForceFull };
+
+    const forceFull = Boolean(options.forceFull);
+    const mode = options.mode || 'gentle';
+    const batchDelayMs = options.batchDelayMs !== undefined
+      ? options.batchDelayMs
+      : (mode === 'gentle' ? 50 : 0);
     if (!this.isInitialized) {
       await this.init();
     }
@@ -156,6 +166,12 @@ export class IndexerWorker {
           (this.status.indexedFiles / scan.totalFilesCount) * 100
         );
         onProgress?.({ ...this.status });
+
+        // Cooperative event loop yield to keep server responsive
+        await new Promise((resolve) => setImmediate(resolve));
+        if (batchDelayMs > 0 && i + batchSize < scan.filesToIndex.length) {
+          await new Promise((resolve) => setTimeout(resolve, batchDelayMs));
+        }
       }
 
       this.status.state = 'ready';

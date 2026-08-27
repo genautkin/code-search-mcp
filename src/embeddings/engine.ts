@@ -23,7 +23,7 @@ export class EmbeddingEngine {
   private async getExtractor() {
     if (!this.extractorPromise) {
       this.extractorPromise = pipeline('feature-extraction', this.modelName, {
-        dtype: 'fp32'
+        dtype: 'q8'
       });
     }
     return this.extractorPromise;

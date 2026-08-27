@@ -1,6 +1,6 @@
 {
   "name": "code-search-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Zero-daemon, cross-platform local semantic code search MCP server with real-time indexing progress and live file watching",
   "main": "dist/index.js",
   "module": "dist/index.js",

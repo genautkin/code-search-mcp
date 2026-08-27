@@ -28,6 +28,13 @@ export interface InitOptions {
   skipIndex?: boolean;
 }
 
+export type IndexingMode = 'fast' | 'gentle';
+
+export interface StartIndexingOptions {
+  forceFull?: boolean;
+  mode?: IndexingMode;
+  batchDelayMs?: number;
+}
 
 export interface CodeChunk {
   id: string; // e.g. "relPath:startLine:endLine"

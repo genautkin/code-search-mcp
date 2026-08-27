@@ -91,4 +91,17 @@ describe('MCP Server Integration', () => {
     expect(content[0].text).toContain('Semantic Code Search — AI Agent Guide');
     expect(content[0].text).toContain('Strongly Recommended Scenarios for `code_search`');
   });
+
+  it('should trigger code_search_reindex with mode parameter', async () => {
+    const result = await client.callTool({
+      name: 'code_search_reindex',
+      arguments: {
+        forceFull: false,
+        mode: 'fast'
+      }
+    });
+
+    const content = result.content as any[];
+    expect(content[0].text).toContain('Indexing started in background (mode: fast, forceFull: false)');
+  });
 });

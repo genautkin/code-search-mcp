@@ -16,7 +16,7 @@ const program = new Command();
 program
   .name('code-search-mcp')
   .description('Zero-daemon local semantic code search MCP server and CLI')
-  .version('0.1.0');
+  .version('0.2.1');
 
 // Subcommand: init
 program
@@ -88,12 +88,15 @@ program
   .command('index [path]')
   .description('Rebuild or update the search index for an initialized project')
   .option('-f, --force', 'Force full reindex from scratch', false)
+  .option('-g, --gentle', 'Run indexer in low-CPU background mode', false)
   .action(async (targetPath, options) => {
     try {
-      console.log('\n🚀 Starting search indexing...');
+      const mode = options.gentle ? 'gentle' : 'fast';
+      console.log(`\n🚀 Starting search indexing (${mode} mode)...`);
       const res = await runIndexCmd({
         projectRoot: targetPath,
         forceFull: options.force,
+        mode,
         onProgress: (status) => {
           if (status.state === 'scanning') {
             process.stdout.write(`\r🔍 Scanning project files...`);

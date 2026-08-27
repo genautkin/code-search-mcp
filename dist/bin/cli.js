@@ -6,7 +6,7 @@ import {
   isProjectInitialized,
   loadConfig,
   runInit
-} from "../chunk-DC2V65L7.js";
+} from "../chunk-FHDA22QB.js";
 
 // bin/cli.ts
 import { Command } from "commander";
@@ -178,7 +178,13 @@ async function runIndexCmd(options = {}) {
   const config = loadConfig(canonicalRoot);
   const worker = new IndexerWorker(config);
   await worker.init();
-  await worker.startIndexing(Boolean(options.forceFull), options.onProgress);
+  await worker.startIndexing(
+    {
+      forceFull: Boolean(options.forceFull),
+      mode: options.mode || "fast"
+    },
+    options.onProgress
+  );
   const status = worker.getStatus();
   return {
     success: true,
@@ -209,7 +215,7 @@ async function runSearch(query, options = {}) {
 
 // bin/cli.ts
 var program = new Command();
-program.name("code-search-mcp").description("Zero-daemon local semantic code search MCP server and CLI").version("0.1.0");
+program.name("code-search-mcp").description("Zero-daemon local semantic code search MCP server and CLI").version("0.2.1");
 program.command("init [path]").description("Initialize code-search in a project with an interactive setup wizard").option("-y, --yes", "Skip interactive questions and use smart defaults", false).option("--clean", "Clean existing index before initializing", false).option("--no-index", "Skip initial indexing after creating configuration", false).action(async (targetPath, options) => {
   try {
     await runInit({
@@ -267,12 +273,15 @@ program.command("status [path]").description("Show index health, file counts, an
     process.exit(1);
   }
 });
-program.command("index [path]").description("Rebuild or update the search index for an initialized project").option("-f, --force", "Force full reindex from scratch", false).action(async (targetPath, options) => {
+program.command("index [path]").description("Rebuild or update the search index for an initialized project").option("-f, --force", "Force full reindex from scratch", false).option("-g, --gentle", "Run indexer in low-CPU background mode", false).action(async (targetPath, options) => {
   try {
-    console.log("\n\u{1F680} Starting search indexing...");
+    const mode = options.gentle ? "gentle" : "fast";
+    console.log(`
+\u{1F680} Starting search indexing (${mode} mode)...`);
     const res = await runIndexCmd({
       projectRoot: targetPath,
       forceFull: options.force,
+      mode,
       onProgress: (status) => {
         if (status.state === "scanning") {
           process.stdout.write(`\r\u{1F50D} Scanning project files...`);

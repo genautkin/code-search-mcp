@@ -27,6 +27,12 @@ interface InitOptions {
     supportedExtensions?: string[];
     skipIndex?: boolean;
 }
+type IndexingMode = 'fast' | 'gentle';
+interface StartIndexingOptions {
+    forceFull?: boolean;
+    mode?: IndexingMode;
+    batchDelayMs?: number;
+}
 interface CodeChunk {
     id: string;
     filePath: string;
@@ -194,7 +200,7 @@ declare class IndexerWorker {
     private isInitialized;
     init(): Promise<void>;
     getStatus(): IndexStatus;
-    startIndexing(forceFull?: boolean, onProgress?: (status: IndexStatus) => void): Promise<void>;
+    startIndexing(optionsOrForceFull?: boolean | StartIndexingOptions, onProgress?: (status: IndexStatus) => void): Promise<void>;
     indexSingleFile(relativePath: string, absolutePath?: string): Promise<void>;
     removeSingleFile(relativePath: string): Promise<void>;
     query(queryText: string, options?: number | SearchOptions): Promise<{
@@ -228,4 +234,4 @@ declare function createMcpServer(initialConfig: CodeSearchConfig): Promise<{
     stop: () => Promise<void>;
 }>;
 
-export { type ChunkerOptions, type CodeChunk, type CodeSearchConfig, DEFAULT_CONFIG, DEFAULT_EXCLUDES, DEFAULT_EXTENSIONS, EmbeddingEngine, type ExtensionDetectionResult, FileWatcher, type IndexStatus, IndexerWorker, type IndexingState, type InitOptions, RECOMMENDED_CODESEARCHIGNORE, type ScanResult, type ScannedFile, type SearchOptions, type SearchResult, TABLE_NAME, VectorStore, chunkCodeFile, computeHash, createIgnoreMatcher, createMcpServer, detectLanguage, extractChunkSymbols, findProjectRoot, formatChunkForEmbedding, isProjectInitialized, loadConfig, normalizePath, scanDirectory };
+export { type ChunkerOptions, type CodeChunk, type CodeSearchConfig, DEFAULT_CONFIG, DEFAULT_EXCLUDES, DEFAULT_EXTENSIONS, EmbeddingEngine, type ExtensionDetectionResult, FileWatcher, type IndexStatus, IndexerWorker, type IndexingMode, type IndexingState, type InitOptions, RECOMMENDED_CODESEARCHIGNORE, type ScanResult, type ScannedFile, type SearchOptions, type SearchResult, type StartIndexingOptions, TABLE_NAME, VectorStore, chunkCodeFile, computeHash, createIgnoreMatcher, createMcpServer, detectLanguage, extractChunkSymbols, findProjectRoot, formatChunkForEmbedding, isProjectInitialized, loadConfig, normalizePath, scanDirectory };

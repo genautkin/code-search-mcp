@@ -7,6 +7,7 @@ import { CodeSearchConfig, IndexStatus } from '../types.js';
 export interface RunIndexOptions {
   projectRoot?: string;
   forceFull?: boolean;
+  mode?: 'fast' | 'gentle';
   onProgress?: (status: IndexStatus) => void;
 }
 
@@ -30,7 +31,13 @@ export async function runIndexCmd(options: RunIndexOptions = {}): Promise<{
   const worker = new IndexerWorker(config);
   await worker.init();
 
-  await worker.startIndexing(Boolean(options.forceFull), options.onProgress);
+  await worker.startIndexing(
+    {
+      forceFull: Boolean(options.forceFull),
+      mode: options.mode || 'fast'
+    },
+    options.onProgress
+  );
   const status = worker.getStatus();
 
   return {

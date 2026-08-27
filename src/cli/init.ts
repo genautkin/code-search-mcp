@@ -240,7 +240,7 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     const worker = new IndexerWorker(config);
     await worker.init();
 
-    await worker.startIndexing(cleanExisting);
+    await worker.startIndexing({ forceFull: cleanExisting, mode: 'fast' });
 
     if (isInteractive) {
       const status = worker.getStatus();
