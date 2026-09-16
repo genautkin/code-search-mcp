@@ -262,7 +262,7 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
         };
       }
 
-      await ensureInitialized();
+      // Fast in-memory status response without blocking on heavy initialization or table queries
       const status = worker.getStatus();
       const text = [
         `Index Status: ${status.state.toUpperCase()}`,

@@ -6,7 +6,7 @@ import {
   isProjectInitialized,
   loadConfig,
   runInit
-} from "../chunk-FHDA22QB.js";
+} from "../chunk-XSSBHW6M.js";
 
 // bin/cli.ts
 import { Command } from "commander";
@@ -150,6 +150,46 @@ async function runStatus(projectRoot) {
     };
   }
   const config = loadConfig(canonicalRoot);
+  const lockFile = path3.join(config.dbPath, ".indexer.lock");
+  let isLockActive = false;
+  if (fs3.existsSync(lockFile)) {
+    try {
+      const pidStr = fs3.readFileSync(lockFile, "utf8").trim();
+      const pid = parseInt(pidStr, 10);
+      if (!isNaN(pid) && pid !== process.pid) {
+        try {
+          process.kill(pid, 0);
+          isLockActive = true;
+        } catch {
+        }
+      }
+    } catch {
+    }
+  }
+  const statusFile = path3.join(config.dbPath, "status.json");
+  if (fs3.existsSync(statusFile)) {
+    try {
+      const statusData = JSON.parse(fs3.readFileSync(statusFile, "utf8"));
+      if (isLockActive || statusData.state === "ready" && statusData.indexedChunks > 0) {
+        return {
+          initialized: true,
+          projectRoot: canonicalRoot,
+          config,
+          status: {
+            state: isLockActive && statusData.state !== "indexing" ? "indexing" : statusData.state,
+            progressPercentage: statusData.progressPercentage ?? 100,
+            indexedFiles: statusData.indexedFiles ?? 0,
+            totalFiles: statusData.totalFiles ?? 0,
+            indexedChunks: statusData.indexedChunks ?? 0,
+            currentFile: statusData.currentFile,
+            lastIndexedAt: statusData.lastIndexedAt,
+            error: statusData.error
+          }
+        };
+      }
+    } catch {
+    }
+  }
   const worker = new IndexerWorker(config);
   await worker.init();
   const status = worker.getStatus();

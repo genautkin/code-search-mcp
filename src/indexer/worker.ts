@@ -15,6 +15,7 @@ export class IndexerWorker {
   private status: IndexStatus;
   private isRunning: boolean = false;
   private lock: ProcessLock;
+  private queuedIndexing: boolean = false;
 
   constructor(config: CodeSearchConfig) {
     this.config = config;
@@ -32,6 +33,27 @@ export class IndexerWorker {
 
   private isInitialized = false;
 
+  private saveStatusSnapshot(): void {
+    try {
+      if (!fs.existsSync(this.config.dbPath)) {
+        fs.mkdirSync(this.config.dbPath, { recursive: true });
+      }
+      const statusFilePath = path.join(this.config.dbPath, 'status.json');
+      const data = JSON.stringify(
+        {
+          ...this.status,
+          pid: process.pid,
+          updatedAt: Date.now()
+        },
+        null,
+        2
+      );
+      fs.writeFileSync(statusFilePath, data, 'utf8');
+    } catch {
+      // Non-blocking
+    }
+  }
+
   public async init(): Promise<void> {
     if (this.isInitialized) return;
     await this.store.init();
@@ -45,6 +67,7 @@ export class IndexerWorker {
       this.status.progressPercentage = 100;
     }
     this.isInitialized = true;
+    this.saveStatusSnapshot();
   }
 
   public getStatus(): IndexStatus {
@@ -70,10 +93,30 @@ export class IndexerWorker {
     }
 
     if (this.isRunning) {
+      this.queuedIndexing = true;
       return;
     }
 
     if (!this.lock.acquire()) {
+      const statusFile = path.join(this.config.dbPath, 'status.json');
+      if (fs.existsSync(statusFile)) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
+          this.status = {
+            state: raw.state || 'indexing',
+            progressPercentage: raw.progressPercentage ?? 0,
+            indexedFiles: raw.indexedFiles ?? 0,
+            totalFiles: raw.totalFiles ?? 0,
+            indexedChunks: raw.indexedChunks ?? 0,
+            currentFile: raw.currentFile,
+            lastIndexedAt: raw.lastIndexedAt,
+            error: raw.error
+          };
+          onProgress?.({ ...this.status });
+          return;
+        } catch {}
+      }
+
       const count = await this.store.count();
       const stats = await this.store.getIndexedFileStats();
       this.status.indexedChunks = count;
@@ -90,6 +133,7 @@ export class IndexerWorker {
     try {
       this.status.state = 'scanning';
       this.status.error = undefined;
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
 
       if (forceFull) {
@@ -108,6 +152,7 @@ export class IndexerWorker {
       this.status.indexedFiles = scan.unchangedFilesCount;
       this.status.progressPercentage =
         scan.totalFilesCount === 0 ? 100 : Math.round((scan.unchangedFilesCount / scan.totalFilesCount) * 100);
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
 
       if (scan.filesToIndex.length === 0) {
@@ -116,15 +161,18 @@ export class IndexerWorker {
         this.status.lastIndexedAt = Date.now();
         this.status.indexedChunks = await this.store.count();
         this.isRunning = false;
+        this.saveStatusSnapshot();
         onProgress?.({ ...this.status });
         return;
       }
 
       this.status.state = 'indexing';
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
 
       let processedInScan = 0;
-      const batchSize = this.config.batchSize;
+      // In gentle mode, use smaller file batches (max 20) to prevent event loop starvation
+      const batchSize = Math.min(this.config.batchSize, mode === 'gentle' ? 20 : this.config.batchSize);
 
       for (let i = 0; i < scan.filesToIndex.length; i += batchSize) {
         const batch = scan.filesToIndex.slice(i, i + batchSize);
@@ -146,9 +194,9 @@ export class IndexerWorker {
         }
 
         if (batchChunks.length > 0) {
-          // Generate embeddings with contextual breadcrumbs in one vectorized ONNX pass
+          // Generate embeddings with contextual breadcrumbs in vectorized ONNX passes (32 per slice)
           const texts = batchChunks.map((c) => formatChunkForEmbedding(c));
-          const vectors = await this.embeddings.embedBatch(texts, 64);
+          const vectors = await this.embeddings.embedBatch(texts, 32);
           for (let j = 0; j < batchChunks.length; j++) {
             batchChunks[j].vector = vectors[j];
           }
@@ -165,6 +213,7 @@ export class IndexerWorker {
         this.status.progressPercentage = Math.round(
           (this.status.indexedFiles / scan.totalFilesCount) * 100
         );
+        this.saveStatusSnapshot();
         onProgress?.({ ...this.status });
 
         // Cooperative event loop yield to keep server responsive
@@ -182,15 +231,22 @@ export class IndexerWorker {
       if (this.status.indexedChunks >= 256) {
         await this.store.createVectorIndex().catch(() => {});
       }
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
     } catch (err: any) {
       this.status.state = 'error';
       this.status.error = err?.message || String(err);
       console.error('[code-search-mcp] Indexing worker error:', err);
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
     } finally {
       this.isRunning = false;
       this.lock.release();
+      this.saveStatusSnapshot();
+      if (this.queuedIndexing) {
+        this.queuedIndexing = false;
+        void this.startIndexing({ forceFull: false, mode: 'gentle' });
+      }
     }
   }
 
@@ -233,6 +289,15 @@ export class IndexerWorker {
     }
     const normRelPath = normalizePath(relativePath);
     await this.store.deleteByFilePath(normRelPath);
+  }
+
+  public async removeFiles(relativePaths: string[]): Promise<void> {
+    if (!this.isInitialized) {
+      await this.init();
+    }
+    if (relativePaths.length === 0) return;
+    const normPaths = relativePaths.map((p) => normalizePath(p));
+    await this.store.deleteByFilePaths(normPaths);
   }
 
   public async query(

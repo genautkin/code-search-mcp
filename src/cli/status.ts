@@ -27,6 +27,48 @@ export async function runStatus(projectRoot?: string): Promise<CliStatusResult> 
   }
 
   const config = loadConfig(canonicalRoot);
+
+  // Check if lock file exists and an indexing process is alive
+  const lockFile = path.join(config.dbPath, '.indexer.lock');
+  let isLockActive = false;
+  if (fs.existsSync(lockFile)) {
+    try {
+      const pidStr = fs.readFileSync(lockFile, 'utf8').trim();
+      const pid = parseInt(pidStr, 10);
+      if (!isNaN(pid) && pid !== process.pid) {
+        try {
+          process.kill(pid, 0);
+          isLockActive = true;
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // Check if status.json exists for instantaneous non-blocking status
+  const statusFile = path.join(config.dbPath, 'status.json');
+  if (fs.existsSync(statusFile)) {
+    try {
+      const statusData = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
+      if (isLockActive || (statusData.state === 'ready' && statusData.indexedChunks > 0)) {
+        return {
+          initialized: true,
+          projectRoot: canonicalRoot,
+          config,
+          status: {
+            state: isLockActive && statusData.state !== 'indexing' ? 'indexing' : statusData.state,
+            progressPercentage: statusData.progressPercentage ?? 100,
+            indexedFiles: statusData.indexedFiles ?? 0,
+            totalFiles: statusData.totalFiles ?? 0,
+            indexedChunks: statusData.indexedChunks ?? 0,
+            currentFile: statusData.currentFile,
+            lastIndexedAt: statusData.lastIndexedAt,
+            error: statusData.error
+          }
+        };
+      }
+    } catch {}
+  }
+
   const worker = new IndexerWorker(config);
   await worker.init();
   const status = worker.getStatus();

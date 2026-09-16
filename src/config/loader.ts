@@ -54,16 +54,37 @@ export function createIgnoreMatcher(
   // 1. Add default excludes
   ig.add(DEFAULT_EXCLUDES);
 
+  // List of parent ignore matchers for gitignore in parent directories (subprojects)
+  const parentGitignoreMatchers: { relPrefix: string; matcher: Ignore }[] = [];
+
   // 2. Add .gitignore if exists and respectGitignore is true
   if (respectGitignore) {
-    const gitignorePath = path.join(projectRoot, '.gitignore');
-    if (fs.existsSync(gitignorePath)) {
-      try {
-        const content = fs.readFileSync(gitignorePath, 'utf8');
-        ig.add(content);
-      } catch {
-        // Ignore read errors
+    let cur = path.resolve(projectRoot);
+    while (true) {
+      const candidate = path.join(cur, '.gitignore');
+      if (fs.existsSync(candidate)) {
+        try {
+          const content = fs.readFileSync(candidate, 'utf8');
+          if (cur === path.resolve(projectRoot)) {
+            ig.add(content);
+          } else {
+            // @ts-ignore
+            const parentIg: Ignore = ignore.default ? ignore.default() : ignore();
+            parentIg.add(content);
+            const relPrefix = path.relative(cur, projectRoot).replace(/\\/g, '/');
+            parentGitignoreMatchers.push({ relPrefix, matcher: parentIg });
+          }
+        } catch {
+          // Ignore read errors
+        }
       }
+
+      if (fs.existsSync(path.join(cur, '.git'))) {
+        break;
+      }
+      const parent = path.dirname(cur);
+      if (parent === cur) break;
+      cur = parent;
     }
   }
 
@@ -101,6 +122,14 @@ export function createIgnoreMatcher(
       if (!normalized || normalized === '.') return false;
       if (ig.ignores(normalized)) return true;
       if (isDirectory && ig.ignores(normalized + '/')) return true;
+
+      // Check parent gitignore matchers
+      for (const { relPrefix, matcher } of parentGitignoreMatchers) {
+        const pathFromParent = relPrefix ? `${relPrefix}/${normalized}` : normalized;
+        if (matcher.ignores(pathFromParent)) return true;
+        if (isDirectory && matcher.ignores(pathFromParent + '/')) return true;
+      }
+
       return false;
     }
   };

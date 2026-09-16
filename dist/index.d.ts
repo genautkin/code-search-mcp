@@ -196,13 +196,16 @@ declare class IndexerWorker {
     private status;
     private isRunning;
     private lock;
+    private queuedIndexing;
     constructor(config: CodeSearchConfig);
     private isInitialized;
+    private saveStatusSnapshot;
     init(): Promise<void>;
     getStatus(): IndexStatus;
     startIndexing(optionsOrForceFull?: boolean | StartIndexingOptions, onProgress?: (status: IndexStatus) => void): Promise<void>;
     indexSingleFile(relativePath: string, absolutePath?: string): Promise<void>;
     removeSingleFile(relativePath: string): Promise<void>;
+    removeFiles(relativePaths: string[]): Promise<void>;
     query(queryText: string, options?: number | SearchOptions): Promise<{
         status: IndexStatus;
         results: SearchResult[];
@@ -214,15 +217,24 @@ declare class FileWatcher {
     private config;
     private worker;
     private watcher;
-    private debounceMap;
     private supportedExts;
     private matcher;
+    private pendingUpdates;
+    private pendingDeletes;
+    private debounceTimer;
+    private firstEventTime;
+    private isProcessing;
+    private readonly debounceMs;
+    private readonly maxDebounceMs;
+    private readonly burstThreshold;
     constructor(config: CodeSearchConfig, worker: IndexerWorker);
     private readyPromise;
     start(): Promise<void>;
     whenReady(): Promise<void>;
     private handleFileChange;
     private handleFileUnlink;
+    private scheduleFlush;
+    private flushPending;
     stop(): Promise<void>;
 }
 

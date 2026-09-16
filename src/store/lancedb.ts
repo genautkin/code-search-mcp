@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CodeChunk, SearchOptions, SearchResult } from '../types.js';
 import { QueryEnhancer } from '../indexer/query-enhancer.js';
+import { extractChunkSymbols } from '../indexer/chunker.js';
 
 export const TABLE_NAME = 'code_chunks';
 
@@ -94,8 +95,13 @@ export class VectorStore {
     if (chunks.length === 0) return;
 
     for (const chunk of chunks) {
-      if (chunk.content) this.queryEnhancer.addWords(chunk.content);
       if (chunk.filePath) this.queryEnhancer.addWords(chunk.filePath);
+      if (chunk.content) {
+        const symbols = extractChunkSymbols(chunk.content, chunk.language);
+        for (const sym of symbols) {
+          this.queryEnhancer.addWords(sym);
+        }
+      }
     }
 
     const records = chunks.map((chunk) => ({

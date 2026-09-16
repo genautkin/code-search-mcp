@@ -10,9 +10,19 @@ export class FileWatcher {
   private config: CodeSearchConfig;
   private worker: IndexerWorker;
   private watcher: FSWatcher | null = null;
-  private debounceMap: Map<string, NodeJS.Timeout> = new Map();
   private supportedExts: Set<string>;
   private matcher: ReturnType<typeof createIgnoreMatcher>;
+
+  // Burst and batch queue state
+  private pendingUpdates: Map<string, string> = new Map();
+  private pendingDeletes: Set<string> = new Set();
+  private debounceTimer: NodeJS.Timeout | null = null;
+  private firstEventTime: number = 0;
+  private isProcessing: boolean = false;
+
+  private readonly debounceMs = 350;
+  private readonly maxDebounceMs = 1500;
+  private readonly burstThreshold = 15;
 
   constructor(config: CodeSearchConfig, worker: IndexerWorker) {
     this.config = config;
@@ -83,21 +93,9 @@ export class FileWatcher {
     const relPath = normalizePath(path.relative(this.config.projectRoot, absPath));
     if (!relPath || relPath.startsWith('..') || this.matcher.ignores(relPath)) return;
 
-    const existingTimeout = this.debounceMap.get(relPath);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-    }
-
-    const timer = setTimeout(async () => {
-      this.debounceMap.delete(relPath);
-      try {
-        await this.worker.indexSingleFile(relPath, absPath);
-      } catch (err) {
-        console.warn(`[code-search-mcp] Failed to incrementally index ${relPath}:`, err);
-      }
-    }, 200);
-
-    this.debounceMap.set(relPath, timer);
+    this.pendingDeletes.delete(relPath);
+    this.pendingUpdates.set(relPath, absPath);
+    this.scheduleFlush();
   }
 
   private handleFileUnlink(filePath: string): void {
@@ -109,22 +107,86 @@ export class FileWatcher {
     const relPath = normalizePath(path.relative(this.config.projectRoot, absPath));
     if (!relPath || relPath.startsWith('..')) return;
 
-    const existingTimeout = this.debounceMap.get(relPath);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-      this.debounceMap.delete(relPath);
+    this.pendingUpdates.delete(relPath);
+    this.pendingDeletes.add(relPath);
+    this.scheduleFlush();
+  }
+
+  private scheduleFlush(): void {
+    const now = Date.now();
+    if (this.firstEventTime === 0) {
+      this.firstEventTime = now;
     }
 
-    this.worker.removeSingleFile(relPath).catch((err) => {
-      console.warn(`[code-search-mcp] Failed to remove ${relPath} from index:`, err);
-    });
+    const elapsed = now - this.firstEventTime;
+
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+
+    const remaining = Math.max(0, this.maxDebounceMs - elapsed);
+    const delay = Math.min(this.debounceMs, remaining);
+
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      this.firstEventTime = 0;
+      void this.flushPending();
+    }, delay);
+  }
+
+  private async flushPending(): Promise<void> {
+    if (this.isProcessing) {
+      this.scheduleFlush();
+      return;
+    }
+
+    const updates = new Map(this.pendingUpdates);
+    const deletes = new Set(this.pendingDeletes);
+    this.pendingUpdates.clear();
+    this.pendingDeletes.clear();
+
+    const totalCount = updates.size + deletes.size;
+    if (totalCount === 0) return;
+
+    this.isProcessing = true;
+
+    try {
+      if (totalCount > this.burstThreshold) {
+        // Coalesce bulk changes (git branch checkout, pull, merge, npm install) into gentle background reindex
+        await this.worker.startIndexing({ forceFull: false, mode: 'gentle' });
+      } else {
+        // Incremental sequential processing for normal interactive edits
+        if (deletes.size > 0) {
+          await this.worker.removeFiles(Array.from(deletes));
+        }
+
+        for (const [relPath, absPath] of updates.entries()) {
+          try {
+            await this.worker.indexSingleFile(relPath, absPath);
+          } catch (err) {
+            console.warn(`[code-search-mcp] Failed to incrementally index ${relPath}:`, err);
+          }
+          // Cooperative yield between files to prevent CPU lockup
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+      }
+    } finally {
+      this.isProcessing = false;
+      if (this.pendingUpdates.size > 0 || this.pendingDeletes.size > 0) {
+        this.scheduleFlush();
+      }
+    }
   }
 
   public async stop(): Promise<void> {
-    for (const timer of this.debounceMap.values()) {
-      clearTimeout(timer);
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
     }
-    this.debounceMap.clear();
+    this.firstEventTime = 0;
+    this.pendingUpdates.clear();
+    this.pendingDeletes.clear();
 
     if (this.watcher) {
       await this.watcher.close();

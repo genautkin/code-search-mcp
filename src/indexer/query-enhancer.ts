@@ -48,13 +48,18 @@ export function levenshteinDistance(a: string, b: string): number {
   return matrix[la][lb];
 }
 
+export const MAX_VOCABULARY_SIZE = 15000;
+
 export class QueryEnhancer {
   private vocabulary: Set<string> = new Set();
   private lowerToWord: Map<string, string> = new Map();
 
   public addWords(text: string): void {
-    const rawTokens = text.split(/[^a-zA-Z0-9_$]+/);
+    if (this.vocabulary.size >= MAX_VOCABULARY_SIZE) return;
+    const slice = text.length > 2048 ? text.slice(0, 2048) : text;
+    const rawTokens = slice.split(/[^a-zA-Z0-9_$]+/);
     for (const t of rawTokens) {
+      if (this.vocabulary.size >= MAX_VOCABULARY_SIZE) break;
       if (t.length >= 3 && t.length <= 40) {
         this.addSingleWord(t);
 
@@ -70,6 +75,9 @@ export class QueryEnhancer {
   }
 
   private addSingleWord(word: string): void {
+    if (this.vocabulary.size >= MAX_VOCABULARY_SIZE && !this.vocabulary.has(word)) {
+      return;
+    }
     this.vocabulary.add(word);
     const lower = word.toLowerCase();
     if (!this.lowerToWord.has(lower)) {

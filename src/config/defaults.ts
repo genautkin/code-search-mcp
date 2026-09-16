@@ -17,7 +17,14 @@ export const DEFAULT_EXCLUDES = [
   '**/node_modules/**',
   '.cache', '.cache/**',
   'dist', 'dist/**',
-  'build', 'build/**'
+  'build', 'build/**',
+  'bin', 'bin/**',
+  'obj', 'obj/**',
+  'target', 'target/**',
+  'coverage', 'coverage/**',
+  '.nyc_output', '.nyc_output/**',
+  'ios', 'ios/**',
+  'android', 'android/**'
 ];
 
 export const DEFAULT_CONFIG = {

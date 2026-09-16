@@ -58,6 +58,11 @@ export class EmbeddingEngine {
         const slice = Array.from(output.data.slice(j * batchDim, (j + 1) * batchDim)) as number[];
         results.push(slice);
       }
+
+      // Yield cooperatively to the Node.js event loop to process stdio / MCP requests
+      if (i + batchSize < texts.length) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
     }
 
     return results;

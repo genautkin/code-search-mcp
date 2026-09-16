@@ -50,7 +50,21 @@ var DEFAULT_EXCLUDES = [
   "dist",
   "dist/**",
   "build",
-  "build/**"
+  "build/**",
+  "bin",
+  "bin/**",
+  "obj",
+  "obj/**",
+  "target",
+  "target/**",
+  "coverage",
+  "coverage/**",
+  ".nyc_output",
+  ".nyc_output/**",
+  "ios",
+  "ios/**",
+  "android",
+  "android/**"
 ];
 var DEFAULT_CONFIG = {
   embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -190,14 +204,31 @@ function isProjectInitialized(projectRoot) {
 function createIgnoreMatcher(projectRoot, customExcludes = [], respectGitignore = true) {
   const ig = ignore.default ? ignore.default() : ignore();
   ig.add(DEFAULT_EXCLUDES);
+  const parentGitignoreMatchers = [];
   if (respectGitignore) {
-    const gitignorePath = path.join(projectRoot, ".gitignore");
-    if (fs.existsSync(gitignorePath)) {
-      try {
-        const content = fs.readFileSync(gitignorePath, "utf8");
-        ig.add(content);
-      } catch {
+    let cur = path.resolve(projectRoot);
+    while (true) {
+      const candidate = path.join(cur, ".gitignore");
+      if (fs.existsSync(candidate)) {
+        try {
+          const content = fs.readFileSync(candidate, "utf8");
+          if (cur === path.resolve(projectRoot)) {
+            ig.add(content);
+          } else {
+            const parentIg = ignore.default ? ignore.default() : ignore();
+            parentIg.add(content);
+            const relPrefix = path.relative(cur, projectRoot).replace(/\\/g, "/");
+            parentGitignoreMatchers.push({ relPrefix, matcher: parentIg });
+          }
+        } catch {
+        }
       }
+      if (fs.existsSync(path.join(cur, ".git"))) {
+        break;
+      }
+      const parent = path.dirname(cur);
+      if (parent === cur) break;
+      cur = parent;
     }
   }
   const ignorePath = path.join(projectRoot, ".ignore");
@@ -225,6 +256,11 @@ function createIgnoreMatcher(projectRoot, customExcludes = [], respectGitignore 
       if (!normalized || normalized === ".") return false;
       if (ig.ignores(normalized)) return true;
       if (isDirectory && ig.ignores(normalized + "/")) return true;
+      for (const { relPrefix, matcher } of parentGitignoreMatchers) {
+        const pathFromParent = relPrefix ? `${relPrefix}/${normalized}` : normalized;
+        if (matcher.ignores(pathFromParent)) return true;
+        if (isDirectory && matcher.ignores(pathFromParent + "/")) return true;
+      }
       return false;
     }
   };
@@ -322,10 +358,217 @@ var EmbeddingEngine = class _EmbeddingEngine {
         const slice = Array.from(output.data.slice(j * batchDim, (j + 1) * batchDim));
         results.push(slice);
       }
+      if (i + batchSize < texts.length) {
+        await new Promise((resolve5) => setImmediate(resolve5));
+      }
     }
     return results;
   }
 };
+
+// src/indexer/chunker.ts
+import * as crypto from "crypto";
+import * as path2 from "path";
+function computeHash(text) {
+  return crypto.createHash("md5").update(text, "utf8").digest("hex");
+}
+function normalizePath(p) {
+  return p.replace(/\\/g, "/");
+}
+function detectLanguage(filePath) {
+  const ext = path2.extname(filePath).toLowerCase();
+  switch (ext) {
+    case ".ts":
+    case ".tsx":
+      return "typescript";
+    case ".js":
+    case ".jsx":
+    case ".mjs":
+    case ".cjs":
+      return "javascript";
+    case ".vue":
+      return "vue";
+    case ".svelte":
+      return "svelte";
+    case ".cs":
+      return "csharp";
+    case ".py":
+      return "python";
+    case ".go":
+      return "go";
+    case ".rs":
+      return "rust";
+    case ".java":
+      return "java";
+    case ".cpp":
+    case ".cc":
+    case ".c":
+    case ".h":
+    case ".hpp":
+      return "cpp";
+    case ".sql":
+      return "sql";
+    case ".json":
+      return "json";
+    case ".md":
+    case ".mdx":
+      return "markdown";
+    default:
+      return ext.replace(".", "") || "text";
+  }
+}
+var LANGUAGE_KEYWORDS = /* @__PURE__ */ new Set([
+  "if",
+  "else",
+  "return",
+  "for",
+  "while",
+  "switch",
+  "case",
+  "break",
+  "continue",
+  "import",
+  "export",
+  "from",
+  "default",
+  "as",
+  "new",
+  "this",
+  "super",
+  "true",
+  "false",
+  "null",
+  "undefined",
+  "void",
+  "any",
+  "string",
+  "number",
+  "boolean",
+  "public",
+  "private",
+  "protected",
+  "static",
+  "readonly",
+  "const",
+  "let",
+  "var",
+  "function",
+  "class",
+  "interface",
+  "type",
+  "enum",
+  "struct",
+  "trait",
+  "def",
+  "fn"
+]);
+function extractChunkSymbols(content, language) {
+  const symbols = /* @__PURE__ */ new Set();
+  const declRegex = /(?:class|interface|type|enum|struct|trait|record|function|fn|func|def)\s+([A-Za-z0-9_]+)/g;
+  let match;
+  while ((match = declRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+  const funcAssignRegex = /(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/g;
+  while ((match = funcAssignRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+  const methodRegex = /(?:public|private|protected|static|async|override|virtual)\s+(?:async\s+)?([A-Za-z0-9_]+)\s*\(/g;
+  while ((match = methodRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+    }
+  }
+  const idRegex = /\b([a-z]+[A-Z0-9][A-Za-z0-9]*|[A-Z][a-z0-9]+[A-Z0-9][A-Za-z0-9]*)\b/g;
+  while ((match = idRegex.exec(content)) !== null) {
+    if (match[1] && match[1].length >= 3 && !LANGUAGE_KEYWORDS.has(match[1])) {
+      symbols.add(match[1]);
+      if (symbols.size >= 20) break;
+    }
+  }
+  return Array.from(symbols).slice(0, 15);
+}
+function formatChunkForEmbedding(chunk) {
+  const lang = chunk.language || detectLanguage(chunk.filePath);
+  const symbols = lang !== "markdown" && lang !== "text" ? extractChunkSymbols(chunk.content, lang) : [];
+  const symbolLine = symbols.length > 0 ? `
+// Symbols: ${symbols.join(", ")}` : "";
+  const header = `// File: ${chunk.filePath} [L${chunk.startLine}-L${chunk.endLine}] (${lang})${symbolLine}`;
+  return `${header}
+${chunk.content}`;
+}
+function chunkCodeFile(relativePath, absolutePath, content, options = {}) {
+  const maxLines = options.maxLinesPerChunk ?? 45;
+  const overlap = options.overlapLines ?? 10;
+  const normalizedRelPath = normalizePath(relativePath);
+  const normalizedAbsPath = normalizePath(absolutePath);
+  const language = detectLanguage(relativePath);
+  const now = Date.now();
+  let rawLines = content.split(/\r?\n/);
+  if (rawLines.length > 1 && rawLines[rawLines.length - 1] === "") {
+    rawLines.pop();
+  }
+  const totalLines = rawLines.length;
+  if (totalLines === 0 || totalLines === 1 && rawLines[0].trim() === "") {
+    return [];
+  }
+  if (totalLines <= maxLines) {
+    const chunkContent = rawLines.join("\n");
+    return [
+      {
+        id: `${normalizedRelPath}:1:${totalLines}`,
+        filePath: normalizedRelPath,
+        absolutePath: normalizedAbsPath,
+        startLine: 1,
+        endLine: totalLines,
+        content: chunkContent,
+        contentHash: computeHash(chunkContent),
+        language,
+        updatedAt: now
+      }
+    ];
+  }
+  const chunks = [];
+  let currentStart = 0;
+  while (currentStart < totalLines) {
+    let currentEnd = Math.min(currentStart + maxLines, totalLines);
+    if (currentEnd < totalLines) {
+      const searchWindowStart = Math.max(currentStart + (maxLines - 10), currentStart + 15);
+      for (let lineIdx = currentEnd - 1; lineIdx >= searchWindowStart; lineIdx--) {
+        const line = rawLines[lineIdx].trim();
+        if (line === "" || line === "}" || line === "};" || line.startsWith("export ") || line.startsWith("function ") || line.startsWith("/**")) {
+          currentEnd = lineIdx + (line === "" || line === "}" || line === "};" ? 1 : 0);
+          break;
+        }
+      }
+    }
+    const chunkLines = rawLines.slice(currentStart, currentEnd);
+    const chunkContent = chunkLines.join("\n");
+    const startLineNum = currentStart + 1;
+    const endLineNum = currentEnd;
+    chunks.push({
+      id: `${normalizedRelPath}:${startLineNum}:${endLineNum}`,
+      filePath: normalizedRelPath,
+      absolutePath: normalizedAbsPath,
+      startLine: startLineNum,
+      endLine: endLineNum,
+      content: chunkContent,
+      contentHash: computeHash(chunkContent),
+      language,
+      updatedAt: now
+    });
+    if (currentEnd >= totalLines) {
+      break;
+    }
+    const advance = Math.max(1, currentEnd - currentStart - overlap);
+    currentStart += advance;
+  }
+  return chunks;
+}
 
 // src/store/lancedb.ts
 import * as lancedb from "@lancedb/lancedb";
@@ -373,12 +616,16 @@ function levenshteinDistance(a, b) {
   }
   return matrix[la][lb];
 }
+var MAX_VOCABULARY_SIZE = 15e3;
 var QueryEnhancer = class {
   vocabulary = /* @__PURE__ */ new Set();
   lowerToWord = /* @__PURE__ */ new Map();
   addWords(text) {
-    const rawTokens = text.split(/[^a-zA-Z0-9_$]+/);
+    if (this.vocabulary.size >= MAX_VOCABULARY_SIZE) return;
+    const slice = text.length > 2048 ? text.slice(0, 2048) : text;
+    const rawTokens = slice.split(/[^a-zA-Z0-9_$]+/);
     for (const t of rawTokens) {
+      if (this.vocabulary.size >= MAX_VOCABULARY_SIZE) break;
       if (t.length >= 3 && t.length <= 40) {
         this.addSingleWord(t);
         const camelParts = t.replace(/([a-z])([A-Z])/g, "$1 $2").split(" ");
@@ -391,6 +638,9 @@ var QueryEnhancer = class {
     }
   }
   addSingleWord(word) {
+    if (this.vocabulary.size >= MAX_VOCABULARY_SIZE && !this.vocabulary.has(word)) {
+      return;
+    }
     this.vocabulary.add(word);
     const lower = word.toLowerCase();
     if (!this.lowerToWord.has(lower)) {
@@ -527,8 +777,13 @@ var VectorStore = class {
   async insertChunks(chunks) {
     if (chunks.length === 0) return;
     for (const chunk of chunks) {
-      if (chunk.content) this.queryEnhancer.addWords(chunk.content);
       if (chunk.filePath) this.queryEnhancer.addWords(chunk.filePath);
+      if (chunk.content) {
+        const symbols = extractChunkSymbols(chunk.content, chunk.language);
+        for (const sym of symbols) {
+          this.queryEnhancer.addWords(sym);
+        }
+      }
     }
     const records = chunks.map((chunk) => ({
       id: chunk.id,
@@ -899,210 +1154,6 @@ var VectorStore = class {
   }
 };
 
-// src/indexer/chunker.ts
-import * as crypto from "crypto";
-import * as path2 from "path";
-function computeHash(text) {
-  return crypto.createHash("md5").update(text, "utf8").digest("hex");
-}
-function normalizePath(p) {
-  return p.replace(/\\/g, "/");
-}
-function detectLanguage(filePath) {
-  const ext = path2.extname(filePath).toLowerCase();
-  switch (ext) {
-    case ".ts":
-    case ".tsx":
-      return "typescript";
-    case ".js":
-    case ".jsx":
-    case ".mjs":
-    case ".cjs":
-      return "javascript";
-    case ".vue":
-      return "vue";
-    case ".svelte":
-      return "svelte";
-    case ".cs":
-      return "csharp";
-    case ".py":
-      return "python";
-    case ".go":
-      return "go";
-    case ".rs":
-      return "rust";
-    case ".java":
-      return "java";
-    case ".cpp":
-    case ".cc":
-    case ".c":
-    case ".h":
-    case ".hpp":
-      return "cpp";
-    case ".sql":
-      return "sql";
-    case ".json":
-      return "json";
-    case ".md":
-    case ".mdx":
-      return "markdown";
-    default:
-      return ext.replace(".", "") || "text";
-  }
-}
-var LANGUAGE_KEYWORDS = /* @__PURE__ */ new Set([
-  "if",
-  "else",
-  "return",
-  "for",
-  "while",
-  "switch",
-  "case",
-  "break",
-  "continue",
-  "import",
-  "export",
-  "from",
-  "default",
-  "as",
-  "new",
-  "this",
-  "super",
-  "true",
-  "false",
-  "null",
-  "undefined",
-  "void",
-  "any",
-  "string",
-  "number",
-  "boolean",
-  "public",
-  "private",
-  "protected",
-  "static",
-  "readonly",
-  "const",
-  "let",
-  "var",
-  "function",
-  "class",
-  "interface",
-  "type",
-  "enum",
-  "struct",
-  "trait",
-  "def",
-  "fn"
-]);
-function extractChunkSymbols(content, language) {
-  const symbols = /* @__PURE__ */ new Set();
-  const declRegex = /(?:class|interface|type|enum|struct|trait|record|function|fn|func|def)\s+([A-Za-z0-9_]+)/g;
-  let match;
-  while ((match = declRegex.exec(content)) !== null) {
-    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
-      symbols.add(match[1]);
-    }
-  }
-  const funcAssignRegex = /(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/g;
-  while ((match = funcAssignRegex.exec(content)) !== null) {
-    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
-      symbols.add(match[1]);
-    }
-  }
-  const methodRegex = /(?:public|private|protected|static|async|override|virtual)\s+(?:async\s+)?([A-Za-z0-9_]+)\s*\(/g;
-  while ((match = methodRegex.exec(content)) !== null) {
-    if (match[1] && match[1].length > 1 && !LANGUAGE_KEYWORDS.has(match[1])) {
-      symbols.add(match[1]);
-    }
-  }
-  const idRegex = /\b([a-z]+[A-Z0-9][A-Za-z0-9]*|[A-Z][a-z0-9]+[A-Z0-9][A-Za-z0-9]*)\b/g;
-  while ((match = idRegex.exec(content)) !== null) {
-    if (match[1] && match[1].length >= 3 && !LANGUAGE_KEYWORDS.has(match[1])) {
-      symbols.add(match[1]);
-      if (symbols.size >= 20) break;
-    }
-  }
-  return Array.from(symbols).slice(0, 15);
-}
-function formatChunkForEmbedding(chunk) {
-  const lang = chunk.language || detectLanguage(chunk.filePath);
-  const symbols = lang !== "markdown" && lang !== "text" ? extractChunkSymbols(chunk.content, lang) : [];
-  const symbolLine = symbols.length > 0 ? `
-// Symbols: ${symbols.join(", ")}` : "";
-  const header = `// File: ${chunk.filePath} [L${chunk.startLine}-L${chunk.endLine}] (${lang})${symbolLine}`;
-  return `${header}
-${chunk.content}`;
-}
-function chunkCodeFile(relativePath, absolutePath, content, options = {}) {
-  const maxLines = options.maxLinesPerChunk ?? 45;
-  const overlap = options.overlapLines ?? 10;
-  const normalizedRelPath = normalizePath(relativePath);
-  const normalizedAbsPath = normalizePath(absolutePath);
-  const language = detectLanguage(relativePath);
-  const now = Date.now();
-  let rawLines = content.split(/\r?\n/);
-  if (rawLines.length > 1 && rawLines[rawLines.length - 1] === "") {
-    rawLines.pop();
-  }
-  const totalLines = rawLines.length;
-  if (totalLines === 0 || totalLines === 1 && rawLines[0].trim() === "") {
-    return [];
-  }
-  if (totalLines <= maxLines) {
-    const chunkContent = rawLines.join("\n");
-    return [
-      {
-        id: `${normalizedRelPath}:1:${totalLines}`,
-        filePath: normalizedRelPath,
-        absolutePath: normalizedAbsPath,
-        startLine: 1,
-        endLine: totalLines,
-        content: chunkContent,
-        contentHash: computeHash(chunkContent),
-        language,
-        updatedAt: now
-      }
-    ];
-  }
-  const chunks = [];
-  let currentStart = 0;
-  while (currentStart < totalLines) {
-    let currentEnd = Math.min(currentStart + maxLines, totalLines);
-    if (currentEnd < totalLines) {
-      const searchWindowStart = Math.max(currentStart + (maxLines - 10), currentStart + 15);
-      for (let lineIdx = currentEnd - 1; lineIdx >= searchWindowStart; lineIdx--) {
-        const line = rawLines[lineIdx].trim();
-        if (line === "" || line === "}" || line === "};" || line.startsWith("export ") || line.startsWith("function ") || line.startsWith("/**")) {
-          currentEnd = lineIdx + (line === "" || line === "}" || line === "};" ? 1 : 0);
-          break;
-        }
-      }
-    }
-    const chunkLines = rawLines.slice(currentStart, currentEnd);
-    const chunkContent = chunkLines.join("\n");
-    const startLineNum = currentStart + 1;
-    const endLineNum = currentEnd;
-    chunks.push({
-      id: `${normalizedRelPath}:${startLineNum}:${endLineNum}`,
-      filePath: normalizedRelPath,
-      absolutePath: normalizedAbsPath,
-      startLine: startLineNum,
-      endLine: endLineNum,
-      content: chunkContent,
-      contentHash: computeHash(chunkContent),
-      language,
-      updatedAt: now
-    });
-    if (currentEnd >= totalLines) {
-      break;
-    }
-    const advance = Math.max(1, currentEnd - currentStart - overlap);
-    currentStart += advance;
-  }
-  return chunks;
-}
-
 // src/indexer/scanner.ts
 import * as fs3 from "fs";
 import * as path3 from "path";
@@ -1235,6 +1286,7 @@ var IndexerWorker = class {
   status;
   isRunning = false;
   lock;
+  queuedIndexing = false;
   constructor(config) {
     this.config = config;
     this.store = new VectorStore(config.dbPath);
@@ -1249,6 +1301,25 @@ var IndexerWorker = class {
     };
   }
   isInitialized = false;
+  saveStatusSnapshot() {
+    try {
+      if (!fs5.existsSync(this.config.dbPath)) {
+        fs5.mkdirSync(this.config.dbPath, { recursive: true });
+      }
+      const statusFilePath = path5.join(this.config.dbPath, "status.json");
+      const data = JSON.stringify(
+        {
+          ...this.status,
+          pid: process.pid,
+          updatedAt: Date.now()
+        },
+        null,
+        2
+      );
+      fs5.writeFileSync(statusFilePath, data, "utf8");
+    } catch {
+    }
+  }
   async init() {
     if (this.isInitialized) return;
     await this.store.init();
@@ -1262,6 +1333,7 @@ var IndexerWorker = class {
       this.status.progressPercentage = 100;
     }
     this.isInitialized = true;
+    this.saveStatusSnapshot();
   }
   getStatus() {
     return { ...this.status };
@@ -1275,9 +1347,29 @@ var IndexerWorker = class {
       await this.init();
     }
     if (this.isRunning) {
+      this.queuedIndexing = true;
       return;
     }
     if (!this.lock.acquire()) {
+      const statusFile = path5.join(this.config.dbPath, "status.json");
+      if (fs5.existsSync(statusFile)) {
+        try {
+          const raw = JSON.parse(fs5.readFileSync(statusFile, "utf8"));
+          this.status = {
+            state: raw.state || "indexing",
+            progressPercentage: raw.progressPercentage ?? 0,
+            indexedFiles: raw.indexedFiles ?? 0,
+            totalFiles: raw.totalFiles ?? 0,
+            indexedChunks: raw.indexedChunks ?? 0,
+            currentFile: raw.currentFile,
+            lastIndexedAt: raw.lastIndexedAt,
+            error: raw.error
+          };
+          onProgress?.({ ...this.status });
+          return;
+        } catch {
+        }
+      }
       const count = await this.store.count();
       const stats = await this.store.getIndexedFileStats();
       this.status.indexedChunks = count;
@@ -1292,6 +1384,7 @@ var IndexerWorker = class {
     try {
       this.status.state = "scanning";
       this.status.error = void 0;
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
       if (forceFull) {
         await this.store.clear();
@@ -1304,6 +1397,7 @@ var IndexerWorker = class {
       this.status.totalFiles = scan.totalFilesCount;
       this.status.indexedFiles = scan.unchangedFilesCount;
       this.status.progressPercentage = scan.totalFilesCount === 0 ? 100 : Math.round(scan.unchangedFilesCount / scan.totalFilesCount * 100);
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
       if (scan.filesToIndex.length === 0) {
         this.status.state = "ready";
@@ -1311,13 +1405,15 @@ var IndexerWorker = class {
         this.status.lastIndexedAt = Date.now();
         this.status.indexedChunks = await this.store.count();
         this.isRunning = false;
+        this.saveStatusSnapshot();
         onProgress?.({ ...this.status });
         return;
       }
       this.status.state = "indexing";
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
       let processedInScan = 0;
-      const batchSize = this.config.batchSize;
+      const batchSize = Math.min(this.config.batchSize, mode === "gentle" ? 20 : this.config.batchSize);
       for (let i = 0; i < scan.filesToIndex.length; i += batchSize) {
         const batch = scan.filesToIndex.slice(i, i + batchSize);
         const batchChunks = [];
@@ -1337,7 +1433,7 @@ var IndexerWorker = class {
         }
         if (batchChunks.length > 0) {
           const texts = batchChunks.map((c) => formatChunkForEmbedding(c));
-          const vectors = await this.embeddings.embedBatch(texts, 64);
+          const vectors = await this.embeddings.embedBatch(texts, 32);
           for (let j = 0; j < batchChunks.length; j++) {
             batchChunks[j].vector = vectors[j];
           }
@@ -1351,6 +1447,7 @@ var IndexerWorker = class {
         this.status.progressPercentage = Math.round(
           this.status.indexedFiles / scan.totalFilesCount * 100
         );
+        this.saveStatusSnapshot();
         onProgress?.({ ...this.status });
         await new Promise((resolve5) => setImmediate(resolve5));
         if (batchDelayMs > 0 && i + batchSize < scan.filesToIndex.length) {
@@ -1366,15 +1463,22 @@ var IndexerWorker = class {
         await this.store.createVectorIndex().catch(() => {
         });
       }
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
     } catch (err) {
       this.status.state = "error";
       this.status.error = err?.message || String(err);
       console.error("[code-search-mcp] Indexing worker error:", err);
+      this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
     } finally {
       this.isRunning = false;
       this.lock.release();
+      this.saveStatusSnapshot();
+      if (this.queuedIndexing) {
+        this.queuedIndexing = false;
+        void this.startIndexing({ forceFull: false, mode: "gentle" });
+      }
     }
   }
   async indexSingleFile(relativePath, absolutePath) {
@@ -1407,6 +1511,14 @@ var IndexerWorker = class {
     }
     const normRelPath = normalizePath(relativePath);
     await this.store.deleteByFilePath(normRelPath);
+  }
+  async removeFiles(relativePaths) {
+    if (!this.isInitialized) {
+      await this.init();
+    }
+    if (relativePaths.length === 0) return;
+    const normPaths = relativePaths.map((p) => normalizePath(p));
+    await this.store.deleteByFilePaths(normPaths);
   }
   async query(queryText, options) {
     if (!this.isInitialized) {
@@ -1468,9 +1580,17 @@ var FileWatcher = class {
   config;
   worker;
   watcher = null;
-  debounceMap = /* @__PURE__ */ new Map();
   supportedExts;
   matcher;
+  // Burst and batch queue state
+  pendingUpdates = /* @__PURE__ */ new Map();
+  pendingDeletes = /* @__PURE__ */ new Set();
+  debounceTimer = null;
+  firstEventTime = 0;
+  isProcessing = false;
+  debounceMs = 350;
+  maxDebounceMs = 1500;
+  burstThreshold = 15;
   constructor(config, worker) {
     this.config = config;
     this.worker = worker;
@@ -1521,19 +1641,9 @@ var FileWatcher = class {
     }
     const relPath = normalizePath(path6.relative(this.config.projectRoot, absPath));
     if (!relPath || relPath.startsWith("..") || this.matcher.ignores(relPath)) return;
-    const existingTimeout = this.debounceMap.get(relPath);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-    }
-    const timer = setTimeout(async () => {
-      this.debounceMap.delete(relPath);
-      try {
-        await this.worker.indexSingleFile(relPath, absPath);
-      } catch (err) {
-        console.warn(`[code-search-mcp] Failed to incrementally index ${relPath}:`, err);
-      }
-    }, 200);
-    this.debounceMap.set(relPath, timer);
+    this.pendingDeletes.delete(relPath);
+    this.pendingUpdates.set(relPath, absPath);
+    this.scheduleFlush();
   }
   handleFileUnlink(filePath) {
     let absPath = path6.resolve(filePath);
@@ -1543,20 +1653,71 @@ var FileWatcher = class {
     }
     const relPath = normalizePath(path6.relative(this.config.projectRoot, absPath));
     if (!relPath || relPath.startsWith("..")) return;
-    const existingTimeout = this.debounceMap.get(relPath);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-      this.debounceMap.delete(relPath);
+    this.pendingUpdates.delete(relPath);
+    this.pendingDeletes.add(relPath);
+    this.scheduleFlush();
+  }
+  scheduleFlush() {
+    const now = Date.now();
+    if (this.firstEventTime === 0) {
+      this.firstEventTime = now;
     }
-    this.worker.removeSingleFile(relPath).catch((err) => {
-      console.warn(`[code-search-mcp] Failed to remove ${relPath} from index:`, err);
-    });
+    const elapsed = now - this.firstEventTime;
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    const remaining = Math.max(0, this.maxDebounceMs - elapsed);
+    const delay = Math.min(this.debounceMs, remaining);
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      this.firstEventTime = 0;
+      void this.flushPending();
+    }, delay);
+  }
+  async flushPending() {
+    if (this.isProcessing) {
+      this.scheduleFlush();
+      return;
+    }
+    const updates = new Map(this.pendingUpdates);
+    const deletes = new Set(this.pendingDeletes);
+    this.pendingUpdates.clear();
+    this.pendingDeletes.clear();
+    const totalCount = updates.size + deletes.size;
+    if (totalCount === 0) return;
+    this.isProcessing = true;
+    try {
+      if (totalCount > this.burstThreshold) {
+        await this.worker.startIndexing({ forceFull: false, mode: "gentle" });
+      } else {
+        if (deletes.size > 0) {
+          await this.worker.removeFiles(Array.from(deletes));
+        }
+        for (const [relPath, absPath] of updates.entries()) {
+          try {
+            await this.worker.indexSingleFile(relPath, absPath);
+          } catch (err) {
+            console.warn(`[code-search-mcp] Failed to incrementally index ${relPath}:`, err);
+          }
+          await new Promise((resolve5) => setImmediate(resolve5));
+        }
+      }
+    } finally {
+      this.isProcessing = false;
+      if (this.pendingUpdates.size > 0 || this.pendingDeletes.size > 0) {
+        this.scheduleFlush();
+      }
+    }
   }
   async stop() {
-    for (const timer of this.debounceMap.values()) {
-      clearTimeout(timer);
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
     }
-    this.debounceMap.clear();
+    this.firstEventTime = 0;
+    this.pendingUpdates.clear();
+    this.pendingDeletes.clear();
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = null;
@@ -2137,7 +2298,6 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
           ]
         };
       }
-      await ensureInitialized();
       const status = worker.getStatus();
       const text = [
         `Index Status: ${status.state.toUpperCase()}`,
@@ -2246,18 +2406,18 @@ export {
   createIgnoreMatcher,
   loadConfig,
   EmbeddingEngine,
-  TABLE_NAME,
-  VectorStore,
   computeHash,
   normalizePath,
   detectLanguage,
   extractChunkSymbols,
   formatChunkForEmbedding,
   chunkCodeFile,
+  TABLE_NAME,
+  VectorStore,
   scanDirectory,
   IndexerWorker,
   FileWatcher,
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-FHDA22QB.js.map
+//# sourceMappingURL=chunk-XSSBHW6M.js.map
