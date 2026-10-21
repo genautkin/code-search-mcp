@@ -8,6 +8,8 @@ export class EmbeddingEngine {
   private static instance: EmbeddingEngine | null = null;
   private modelName: string;
   private extractorPromise: Promise<any> | null = null;
+  private idleTimer: NodeJS.Timeout | null = null;
+  private readonly idleTimeoutMs = 2 * 60 * 1000; // Auto-release ONNX after 2 min idle
 
   private constructor(modelName: string = 'Xenova/all-MiniLM-L6-v2') {
     this.modelName = modelName;
@@ -20,10 +22,35 @@ export class EmbeddingEngine {
     return EmbeddingEngine.instance;
   }
 
+  private scheduleIdleUnload() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+    }
+    this.idleTimer = setTimeout(async () => {
+      this.idleTimer = null;
+      const currentPromise = this.extractorPromise;
+      this.extractorPromise = null;
+      if (currentPromise) {
+        try {
+          const extractor = await currentPromise;
+          await extractor?.dispose?.();
+        } catch {}
+      }
+    }, this.idleTimeoutMs);
+    this.idleTimer.unref?.();
+  }
+
   private async getExtractor() {
+    this.scheduleIdleUnload();
     if (!this.extractorPromise) {
+      const configuredThreads = Number(process.env.CODE_SEARCH_THREADS) || 2;
       this.extractorPromise = pipeline('feature-extraction', this.modelName, {
-        dtype: 'q8'
+        dtype: 'q8',
+        session_options: {
+          intraOpNumThreads: configuredThreads,
+          interOpNumThreads: 1,
+          executionMode: 'sequential'
+        }
       });
     }
     return this.extractorPromise;
@@ -39,29 +66,45 @@ export class EmbeddingEngine {
     return Array.from(output.data);
   }
 
-  public async embedBatch(texts: string[], batchSize = 32): Promise<number[][]> {
+  public async embedBatch(
+    texts: string[],
+    batchSize = 16,
+    interSliceDelayMs = 0
+  ): Promise<number[][]> {
     if (texts.length === 0) return [];
     const extractor = await this.getExtractor();
-    const results: number[][] = [];
+    const results: number[][] = new Array(texts.length);
 
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const batch = texts.slice(i, i + batchSize).map((t) =>
-        t.replace(/\r?\n/g, ' ').slice(0, 2048)
-      );
+    // Clean and sort by length ascending so sequences within each micro-batch
+    // have homogeneous token lengths (eliminates 2x-4x Transformer padding waste)
+    const indexed = texts.map((t, idx) => ({
+      idx,
+      clean: t.replace(/\r?\n/g, ' ').slice(0, 2048)
+    }));
+    indexed.sort((a, b) => a.clean.length - b.clean.length);
+
+    for (let i = 0; i < indexed.length; i += batchSize) {
+      const sliceItems = indexed.slice(i, i + batchSize);
+      const batch = sliceItems.map((item) => item.clean);
+
       const output = await extractor(batch, {
         pooling: 'mean',
         normalize: true
       });
 
       const batchDim = output.dims ? output.dims[1] : Math.round(output.data.length / batch.length);
-      for (let j = 0; j < batch.length; j++) {
-        const slice = Array.from(output.data.slice(j * batchDim, (j + 1) * batchDim)) as number[];
-        results.push(slice);
+      for (let j = 0; j < sliceItems.length; j++) {
+        const vector = Array.from(output.data.slice(j * batchDim, (j + 1) * batchDim)) as number[];
+        results[sliceItems[j].idx] = vector;
       }
 
-      // Yield cooperatively to the Node.js event loop to process stdio / MCP requests
-      if (i + batchSize < texts.length) {
-        await new Promise<void>((resolve) => setImmediate(resolve));
+      // Yield cooperatively to the Node.js event loop (and optionally pause in gentle mode)
+      if (i + batchSize < indexed.length) {
+        if (interSliceDelayMs > 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, interSliceDelayMs));
+        } else {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
       }
     }
 

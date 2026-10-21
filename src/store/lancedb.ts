@@ -496,9 +496,14 @@ export class VectorStore {
     return await table.countRows();
   }
 
-  public async getIndexedFileStats(): Promise<Map<string, { updatedAt: number; contentHash: string }>> {
+  public async getIndexedFileStats(): Promise<
+    Map<string, { updatedAt: number; contentHash: string; chunkHashes: Set<string>; chunkCount: number }>
+  > {
     const table = this.ensureTable();
-    const map = new Map<string, { updatedAt: number; contentHash: string }>();
+    const map = new Map<
+      string,
+      { updatedAt: number; contentHash: string; chunkHashes: Set<string>; chunkCount: number }
+    >();
 
     const rowCount = await table.countRows();
     if (rowCount === 0) return map;
@@ -507,11 +512,25 @@ export class VectorStore {
       // Query metadata columns
       const records = await table.query().select(['filePath', 'updatedAt', 'contentHash']).toArray();
       for (const rec of records) {
-        if (rec.filePath && !map.has(rec.filePath)) {
+        if (!rec.filePath) continue;
+        const existing = map.get(rec.filePath);
+        if (!existing) {
+          const chunkHashes = new Set<string>();
+          if (rec.contentHash) chunkHashes.add(rec.contentHash);
           map.set(rec.filePath, {
             updatedAt: rec.updatedAt || 0,
-            contentHash: rec.contentHash || ''
+            contentHash: rec.contentHash || '',
+            chunkHashes,
+            chunkCount: 1
           });
+        } else {
+          if (rec.updatedAt && rec.updatedAt > existing.updatedAt) {
+            existing.updatedAt = rec.updatedAt;
+          }
+          if (rec.contentHash) {
+            existing.chunkHashes.add(rec.contentHash);
+          }
+          existing.chunkCount++;
         }
       }
     } catch (err) {

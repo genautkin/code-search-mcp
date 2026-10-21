@@ -5,87 +5,22 @@ import {
   findProjectRoot,
   isProjectInitialized,
   loadConfig,
+  logger,
   runInit
-} from "../chunk-XSSBHW6M.js";
+} from "../chunk-ATMT4WQC.js";
 
 // bin/cli.ts
 import { Command } from "commander";
-import * as path6 from "path";
-
-// src/logger.ts
-import * as fs from "fs";
-import * as path from "path";
-var Logger = class _Logger {
-  static instance = null;
-  logFilePath = null;
-  maxSizeBytes = 2 * 1024 * 1024;
-  // 2 MB rotating limit
-  constructor() {
-  }
-  static getInstance() {
-    if (!_Logger.instance) {
-      _Logger.instance = new _Logger();
-    }
-    return _Logger.instance;
-  }
-  init(baseDir) {
-    try {
-      if (!fs.existsSync(baseDir)) {
-        fs.mkdirSync(baseDir, { recursive: true });
-      }
-      this.logFilePath = path.join(baseDir, "code-search.log");
-      this.info("Logger initialized", { logFilePath: this.logFilePath });
-    } catch {
-    }
-  }
-  info(message, meta) {
-    this.write("INFO", message, meta);
-  }
-  warn(message, meta) {
-    this.write("WARN", message, meta);
-  }
-  error(message, meta) {
-    this.write("ERROR", message, meta);
-  }
-  debug(message, meta) {
-    this.write("DEBUG", message, meta);
-  }
-  getLogPath() {
-    return this.logFilePath;
-  }
-  write(level, message, meta) {
-    if (!this.logFilePath) return;
-    try {
-      const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-      const metaStr = meta ? ` ${JSON.stringify(meta)}` : "";
-      const line = `[${timestamp}] [${level}] ${message}${metaStr}
-`;
-      if (fs.existsSync(this.logFilePath)) {
-        const stat = fs.statSync(this.logFilePath);
-        if (stat.size > this.maxSizeBytes) {
-          const oldPath = `${this.logFilePath}.1`;
-          try {
-            if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-            fs.renameSync(this.logFilePath, oldPath);
-          } catch {
-          }
-        }
-      }
-      fs.appendFileSync(this.logFilePath, line, "utf8");
-    } catch {
-    }
-  }
-};
-var logger = Logger.getInstance();
+import * as path5 from "path";
 
 // src/cli/uninit.ts
-import * as fs2 from "fs";
-import * as path2 from "path";
+import * as fs from "fs";
+import * as path from "path";
 async function runUninit(projectRoot) {
-  const targetDir = projectRoot ? path2.resolve(projectRoot) : findProjectRoot(process.cwd());
+  const targetDir = projectRoot ? path.resolve(projectRoot) : findProjectRoot(process.cwd());
   let canonicalRoot = targetDir;
   try {
-    canonicalRoot = fs2.realpathSync(targetDir);
+    canonicalRoot = fs.realpathSync(targetDir);
   } catch {
   }
   const removedPaths = [];
@@ -95,33 +30,33 @@ async function runUninit(projectRoot) {
     dbPath = config.dbPath;
   } catch {
   }
-  const rcPath = path2.join(canonicalRoot, ".codesearchrc.json");
-  if (fs2.existsSync(rcPath)) {
+  const rcPath = path.join(canonicalRoot, ".codesearchrc.json");
+  if (fs.existsSync(rcPath)) {
     try {
-      fs2.unlinkSync(rcPath);
+      fs.unlinkSync(rcPath);
       removedPaths.push(rcPath);
     } catch {
     }
   }
-  const ignorePath = path2.join(canonicalRoot, ".codesearchignore");
-  if (fs2.existsSync(ignorePath)) {
+  const ignorePath = path.join(canonicalRoot, ".codesearchignore");
+  if (fs.existsSync(ignorePath)) {
     try {
-      fs2.unlinkSync(ignorePath);
+      fs.unlinkSync(ignorePath);
       removedPaths.push(ignorePath);
     } catch {
     }
   }
-  const dotFolder = path2.join(canonicalRoot, ".code-search");
-  if (fs2.existsSync(dotFolder)) {
+  const dotFolder = path.join(canonicalRoot, ".code-search");
+  if (fs.existsSync(dotFolder)) {
     try {
-      fs2.rmSync(dotFolder, { recursive: true, force: true });
+      fs.rmSync(dotFolder, { recursive: true, force: true });
       removedPaths.push(dotFolder);
     } catch {
     }
   }
-  if (dbPath && fs2.existsSync(dbPath) && !dbPath.includes(".code-search")) {
+  if (dbPath && fs.existsSync(dbPath) && !dbPath.includes(".code-search")) {
     try {
-      fs2.rmSync(dbPath, { recursive: true, force: true });
+      fs.rmSync(dbPath, { recursive: true, force: true });
       removedPaths.push(dbPath);
     } catch {
     }
@@ -133,13 +68,13 @@ async function runUninit(projectRoot) {
 }
 
 // src/cli/status.ts
-import * as path3 from "path";
-import * as fs3 from "fs";
+import * as path2 from "path";
+import * as fs2 from "fs";
 async function runStatus(projectRoot) {
-  const targetDir = projectRoot ? path3.resolve(projectRoot) : findProjectRoot(process.cwd());
+  const targetDir = projectRoot ? path2.resolve(projectRoot) : findProjectRoot(process.cwd());
   let canonicalRoot = targetDir;
   try {
-    canonicalRoot = fs3.realpathSync(targetDir);
+    canonicalRoot = fs2.realpathSync(targetDir);
   } catch {
   }
   const initialized = isProjectInitialized(canonicalRoot);
@@ -150,11 +85,11 @@ async function runStatus(projectRoot) {
     };
   }
   const config = loadConfig(canonicalRoot);
-  const lockFile = path3.join(config.dbPath, ".indexer.lock");
+  const lockFile = path2.join(config.dbPath, ".indexer.lock");
   let isLockActive = false;
-  if (fs3.existsSync(lockFile)) {
+  if (fs2.existsSync(lockFile)) {
     try {
-      const pidStr = fs3.readFileSync(lockFile, "utf8").trim();
+      const pidStr = fs2.readFileSync(lockFile, "utf8").trim();
       const pid = parseInt(pidStr, 10);
       if (!isNaN(pid) && pid !== process.pid) {
         try {
@@ -166,10 +101,10 @@ async function runStatus(projectRoot) {
     } catch {
     }
   }
-  const statusFile = path3.join(config.dbPath, "status.json");
-  if (fs3.existsSync(statusFile)) {
+  const statusFile = path2.join(config.dbPath, "status.json");
+  if (fs2.existsSync(statusFile)) {
     try {
-      const statusData = JSON.parse(fs3.readFileSync(statusFile, "utf8"));
+      const statusData = JSON.parse(fs2.readFileSync(statusFile, "utf8"));
       if (isLockActive || statusData.state === "ready" && statusData.indexedChunks > 0) {
         return {
           initialized: true,
@@ -202,13 +137,13 @@ async function runStatus(projectRoot) {
 }
 
 // src/cli/index-cmd.ts
-import * as path4 from "path";
-import * as fs4 from "fs";
+import * as path3 from "path";
+import * as fs3 from "fs";
 async function runIndexCmd(options = {}) {
-  const targetDir = options.projectRoot ? path4.resolve(options.projectRoot) : findProjectRoot(process.cwd());
+  const targetDir = options.projectRoot ? path3.resolve(options.projectRoot) : findProjectRoot(process.cwd());
   let canonicalRoot = targetDir;
   try {
-    canonicalRoot = fs4.realpathSync(targetDir);
+    canonicalRoot = fs3.realpathSync(targetDir);
   } catch {
   }
   const initialized = isProjectInitialized(canonicalRoot);
@@ -234,13 +169,13 @@ async function runIndexCmd(options = {}) {
 }
 
 // src/cli/search.ts
-import * as path5 from "path";
-import * as fs5 from "fs";
+import * as path4 from "path";
+import * as fs4 from "fs";
 async function runSearch(query, options = {}) {
-  const targetDir = options.projectRoot ? path5.resolve(options.projectRoot) : findProjectRoot(process.cwd());
+  const targetDir = options.projectRoot ? path4.resolve(options.projectRoot) : findProjectRoot(process.cwd());
   let canonicalRoot = targetDir;
   try {
-    canonicalRoot = fs5.realpathSync(targetDir);
+    canonicalRoot = fs4.realpathSync(targetDir);
   } catch {
   }
   const initialized = isProjectInitialized(canonicalRoot);
@@ -426,18 +361,20 @@ process.on("unhandledRejection", (reason) => {
 });
 program.option("-p, --path <path>", "Project root directory to index and search").option("-m, --model <model>", "Embedding model (default: Xenova/all-MiniLM-L6-v2)").action(async (options) => {
   try {
-    const targetDir = options.path ? path6.resolve(options.path) : findProjectRoot(process.cwd());
+    const targetDir = options.path ? path5.resolve(options.path) : findProjectRoot(process.cwd());
     const config = loadConfig(targetDir);
     if (options.model) {
       config.embeddingModel = options.model;
     }
-    logger.init(path6.dirname(config.dbPath));
-    logger.info("Starting code-search-mcp session", {
-      projectRoot: config.projectRoot,
-      dbPath: config.dbPath,
-      model: config.embeddingModel,
-      pid: process.pid
-    });
+    if (isProjectInitialized(config.projectRoot)) {
+      logger.init(path5.dirname(config.dbPath));
+      logger.info("Starting code-search-mcp session", {
+        projectRoot: config.projectRoot,
+        dbPath: config.dbPath,
+        model: config.embeddingModel,
+        pid: process.pid
+      });
+    }
     process.stderr.write(`[code-search-mcp] Initializing in: ${config.projectRoot}
 `);
     process.stderr.write(`[code-search-mcp] Database path: ${config.dbPath}

@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -9,6 +10,7 @@ import { FileWatcher } from '../indexer/watcher.js';
 import { CodeSearchConfig } from '../types.js';
 import { isProjectInitialized, loadConfig } from '../config/loader.js';
 import { runInit } from '../cli/init.js';
+import { logger } from '../logger.js';
 
 export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<{
   server: Server;
@@ -53,7 +55,7 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
         {
           name: 'code_search',
           description:
-            'Search the codebase semantically using natural language queries (e.g. "how is payment verified", "calculate discount rate"). Returns relevant code snippets with file paths and line numbers. Supports filtering by directory path, programming language, or codeOnly (to exclude markdown docs).',
+            'PRIMARY CODEBASE DISCOVERY TOOL — Call `code_search` FIRST before running multiple `grep` or file-search calls when locating features, domain logic, UI components, services, or business rules, or when you do not know the exact file path or symbol name. Uses a pre-indexed Hybrid engine (semantic vectors + CamelCase/snake_case identifier splitting + typo-tolerant symbol matching) to return the top ranked code snippets with exact file paths and line numbers in a single <50ms call. Supports filtering by directory (`pathFilter`), `language`, or `codeOnly: true` (to exclude markdown docs).',
           inputSchema: {
             type: 'object',
             properties: {
@@ -161,6 +163,11 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
       // Reload config & worker
       currentConfig = loadConfig(currentConfig.projectRoot);
       isInit = true;
+      logger.init(path.dirname(currentConfig.dbPath));
+      logger.info('Project initialized via code_search_init', {
+        projectRoot: currentConfig.projectRoot,
+        dbPath: currentConfig.dbPath
+      });
       worker = new IndexerWorker(currentConfig);
       await worker.init();
       watcher = new FileWatcher(currentConfig, worker);
@@ -233,11 +240,22 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
         };
       }
 
+      const t0 = Date.now();
       const res = await worker.query(query, {
         limit,
         pathFilter,
         language,
         codeOnly
+      });
+      logger.info('Tool call: code_search', {
+        query,
+        limit,
+        pathFilter,
+        language,
+        codeOnly,
+        resultsCount: res.results.length,
+        indexState: res.status.state,
+        durationMs: Date.now() - t0
       });
 
       return {
@@ -264,6 +282,12 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
 
       // Fast in-memory status response without blocking on heavy initialization or table queries
       const status = worker.getStatus();
+      logger.info('Tool call: code_search_status', {
+        state: status.state,
+        progressPercentage: status.progressPercentage,
+        indexedFiles: status.indexedFiles,
+        totalFiles: status.totalFiles
+      });
       const text = [
         `Index Status: ${status.state.toUpperCase()}`,
         `Progress: ${status.progressPercentage}%`,
@@ -301,6 +325,7 @@ export async function createMcpServer(initialConfig: CodeSearchConfig): Promise<
       await ensureInitialized();
       const forceFull = Boolean(args?.forceFull);
       const mode = (args?.mode as 'fast' | 'gentle') || 'fast';
+      logger.info('Tool call: code_search_reindex', { forceFull, mode });
       worker.startIndexing({ forceFull, mode }).catch((err) => {
         console.error('[code-search-mcp] Reindex error:', err);
       });

@@ -64,7 +64,29 @@ var DEFAULT_EXCLUDES = [
   "ios",
   "ios/**",
   "android",
-  "android/**"
+  "android/**",
+  // Safe non-source artifacts (lockfiles, minified bundles, source maps, generated files, test snapshots/mocks)
+  "package-lock.json",
+  "**/package-lock.json",
+  "yarn.lock",
+  "**/yarn.lock",
+  "pnpm-lock.yaml",
+  "**/pnpm-lock.yaml",
+  "*.min.js",
+  "**/*.min.js",
+  "*.min.css",
+  "**/*.min.css",
+  "*-min.js",
+  "**/*-min.js",
+  "*.map",
+  "**/*.map",
+  "*.generated.*",
+  "**/*.generated.*",
+  "**/__snapshots__/**",
+  "*.snap",
+  "**/__mocks__/**",
+  "**/mocks/**",
+  "**/fixtures/**"
 ];
 var DEFAULT_CONFIG = {
   embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -190,16 +212,67 @@ function findProjectRoot(startDir = process.cwd()) {
     current = parent;
   }
 }
+function resolveMainWorktreeProjectRoot(projectRoot) {
+  let cur = path.resolve(projectRoot);
+  while (true) {
+    const dotGit = path.join(cur, ".git");
+    if (fs.existsSync(dotGit)) {
+      try {
+        const stat = fs.statSync(dotGit);
+        if (stat.isFile()) {
+          const content = fs.readFileSync(dotGit, "utf8").trim();
+          const match = content.match(/^gitdir:\s*(.+)$/i);
+          if (match) {
+            const gitDir = path.resolve(cur, match[1].trim());
+            const normalizedGitDir = gitDir.replace(/\\/g, "/");
+            const worktreesMarker = "/.git/worktrees/";
+            const markerIdx = normalizedGitDir.lastIndexOf(worktreesMarker);
+            if (markerIdx !== -1) {
+              const mainRepoRoot = normalizedGitDir.slice(0, markerIdx);
+              const relFromWorktreeRoot = path.relative(cur, path.resolve(projectRoot));
+              const candidate = path.join(mainRepoRoot, relFromWorktreeRoot);
+              if (fs.existsSync(candidate)) {
+                return candidate;
+              }
+            }
+          }
+        }
+      } catch {
+      }
+      break;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return null;
+}
+function isGlobalPluginDir(dirPath) {
+  const norm = dirPath.replace(/\\/g, "/");
+  return norm.includes("/.gemini/config/plugins/") || norm.includes("/.claude/plugins/");
+}
 function isProjectInitialized(projectRoot) {
   let canonicalRoot = path.resolve(projectRoot);
   try {
     canonicalRoot = fs.realpathSync(canonicalRoot);
   } catch {
   }
+  if (isGlobalPluginDir(canonicalRoot)) {
+    return false;
+  }
   const rcPath = path.join(canonicalRoot, ".codesearchrc.json");
   const dotFolder = path.join(canonicalRoot, ".code-search");
-  const nmCache = path.join(canonicalRoot, "node_modules", ".cache", "code-search");
-  return fs.existsSync(rcPath) || fs.existsSync(dotFolder) || fs.existsSync(nmCache);
+  const nmCache = path.join(canonicalRoot, "node_modules", ".cache", "code-search", "lancedb");
+  if (fs.existsSync(rcPath) || fs.existsSync(dotFolder) || fs.existsSync(nmCache)) {
+    return true;
+  }
+  const mainWorktreeRoot = resolveMainWorktreeProjectRoot(canonicalRoot);
+  if (mainWorktreeRoot) {
+    if (fs.existsSync(path.join(mainWorktreeRoot, ".codesearchrc.json")) || fs.existsSync(path.join(mainWorktreeRoot, ".codesearchignore"))) {
+      return true;
+    }
+  }
+  return false;
 }
 function createIgnoreMatcher(projectRoot, customExcludes = [], respectGitignore = true) {
   const ig = ignore.default ? ignore.default() : ignore();
@@ -246,6 +319,18 @@ function createIgnoreMatcher(projectRoot, customExcludes = [], respectGitignore 
       ig.add(content);
     } catch {
     }
+  } else {
+    const mainWorktreeRoot = resolveMainWorktreeProjectRoot(projectRoot);
+    if (mainWorktreeRoot) {
+      const mainIgnorePath = path.join(mainWorktreeRoot, ".codesearchignore");
+      if (fs.existsSync(mainIgnorePath)) {
+        try {
+          const content = fs.readFileSync(mainIgnorePath, "utf8");
+          ig.add(content);
+        } catch {
+        }
+      }
+    }
   }
   if (customExcludes && customExcludes.length > 0) {
     ig.add(customExcludes);
@@ -272,7 +357,16 @@ function loadConfig(projectRoot) {
   } catch {
   }
   let fileConfig = {};
-  const configPath = path.join(canonicalRoot, ".codesearchrc.json");
+  let configPath = path.join(canonicalRoot, ".codesearchrc.json");
+  if (!fs.existsSync(configPath)) {
+    const mainWorktreeRoot = resolveMainWorktreeProjectRoot(canonicalRoot);
+    if (mainWorktreeRoot) {
+      const mainRcPath = path.join(mainWorktreeRoot, ".codesearchrc.json");
+      if (fs.existsSync(mainRcPath)) {
+        configPath = mainRcPath;
+      }
+    }
+  }
   if (fs.existsSync(configPath)) {
     try {
       const content = fs.readFileSync(configPath, "utf8");
@@ -315,6 +409,9 @@ var EmbeddingEngine = class _EmbeddingEngine {
   static instance = null;
   modelName;
   extractorPromise = null;
+  idleTimer = null;
+  idleTimeoutMs = 2 * 60 * 1e3;
+  // Auto-release ONNX after 2 min idle
   constructor(modelName = "Xenova/all-MiniLM-L6-v2") {
     this.modelName = modelName;
   }
@@ -324,10 +421,35 @@ var EmbeddingEngine = class _EmbeddingEngine {
     }
     return _EmbeddingEngine.instance;
   }
+  scheduleIdleUnload() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+    }
+    this.idleTimer = setTimeout(async () => {
+      this.idleTimer = null;
+      const currentPromise = this.extractorPromise;
+      this.extractorPromise = null;
+      if (currentPromise) {
+        try {
+          const extractor = await currentPromise;
+          await extractor?.dispose?.();
+        } catch {
+        }
+      }
+    }, this.idleTimeoutMs);
+    this.idleTimer.unref?.();
+  }
   async getExtractor() {
+    this.scheduleIdleUnload();
     if (!this.extractorPromise) {
+      const configuredThreads = Number(process.env.CODE_SEARCH_THREADS) || 2;
       this.extractorPromise = pipeline("feature-extraction", this.modelName, {
-        dtype: "q8"
+        dtype: "q8",
+        session_options: {
+          intraOpNumThreads: configuredThreads,
+          interOpNumThreads: 1,
+          executionMode: "sequential"
+        }
       });
     }
     return this.extractorPromise;
@@ -341,25 +463,33 @@ var EmbeddingEngine = class _EmbeddingEngine {
     });
     return Array.from(output.data);
   }
-  async embedBatch(texts, batchSize = 32) {
+  async embedBatch(texts, batchSize = 16, interSliceDelayMs = 0) {
     if (texts.length === 0) return [];
     const extractor = await this.getExtractor();
-    const results = [];
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const batch = texts.slice(i, i + batchSize).map(
-        (t) => t.replace(/\r?\n/g, " ").slice(0, 2048)
-      );
+    const results = new Array(texts.length);
+    const indexed = texts.map((t, idx) => ({
+      idx,
+      clean: t.replace(/\r?\n/g, " ").slice(0, 2048)
+    }));
+    indexed.sort((a, b) => a.clean.length - b.clean.length);
+    for (let i = 0; i < indexed.length; i += batchSize) {
+      const sliceItems = indexed.slice(i, i + batchSize);
+      const batch = sliceItems.map((item) => item.clean);
       const output = await extractor(batch, {
         pooling: "mean",
         normalize: true
       });
       const batchDim = output.dims ? output.dims[1] : Math.round(output.data.length / batch.length);
-      for (let j = 0; j < batch.length; j++) {
-        const slice = Array.from(output.data.slice(j * batchDim, (j + 1) * batchDim));
-        results.push(slice);
+      for (let j = 0; j < sliceItems.length; j++) {
+        const vector = Array.from(output.data.slice(j * batchDim, (j + 1) * batchDim));
+        results[sliceItems[j].idx] = vector;
       }
-      if (i + batchSize < texts.length) {
-        await new Promise((resolve5) => setImmediate(resolve5));
+      if (i + batchSize < indexed.length) {
+        if (interSliceDelayMs > 0) {
+          await new Promise((resolve5) => setTimeout(resolve5, interSliceDelayMs));
+        } else {
+          await new Promise((resolve5) => setImmediate(resolve5));
+        }
       }
     }
     return results;
@@ -1130,11 +1260,25 @@ var VectorStore = class {
     try {
       const records = await table.query().select(["filePath", "updatedAt", "contentHash"]).toArray();
       for (const rec of records) {
-        if (rec.filePath && !map.has(rec.filePath)) {
+        if (!rec.filePath) continue;
+        const existing = map.get(rec.filePath);
+        if (!existing) {
+          const chunkHashes = /* @__PURE__ */ new Set();
+          if (rec.contentHash) chunkHashes.add(rec.contentHash);
           map.set(rec.filePath, {
             updatedAt: rec.updatedAt || 0,
-            contentHash: rec.contentHash || ""
+            contentHash: rec.contentHash || "",
+            chunkHashes,
+            chunkCount: 1
           });
+        } else {
+          if (rec.updatedAt && rec.updatedAt > existing.updatedAt) {
+            existing.updatedAt = rec.updatedAt;
+          }
+          if (rec.contentHash) {
+            existing.chunkHashes.add(rec.contentHash);
+          }
+          existing.chunkCount++;
         }
       }
     } catch (err) {
@@ -1222,32 +1366,99 @@ async function scanDirectory(config, indexedFilesMap = /* @__PURE__ */ new Map()
   };
 }
 
-// src/indexer/worker.ts
-import * as fs5 from "fs";
-import * as path5 from "path";
-
-// src/indexer/lock.ts
+// src/logger.ts
 import * as fs4 from "fs";
 import * as path4 from "path";
+var Logger = class _Logger {
+  static instance = null;
+  logFilePath = null;
+  maxSizeBytes = 2 * 1024 * 1024;
+  // 2 MB rotating limit
+  constructor() {
+  }
+  static getInstance() {
+    if (!_Logger.instance) {
+      _Logger.instance = new _Logger();
+    }
+    return _Logger.instance;
+  }
+  init(baseDir) {
+    try {
+      if (!fs4.existsSync(baseDir)) {
+        fs4.mkdirSync(baseDir, { recursive: true });
+      }
+      this.logFilePath = path4.join(baseDir, "code-search.log");
+      this.info("Logger initialized", { logFilePath: this.logFilePath });
+    } catch {
+    }
+  }
+  info(message, meta) {
+    this.write("INFO", message, meta);
+  }
+  warn(message, meta) {
+    this.write("WARN", message, meta);
+  }
+  error(message, meta) {
+    this.write("ERROR", message, meta);
+  }
+  debug(message, meta) {
+    this.write("DEBUG", message, meta);
+  }
+  getLogPath() {
+    return this.logFilePath;
+  }
+  write(level, message, meta) {
+    if (!this.logFilePath) return;
+    try {
+      const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+      const metaStr = meta ? ` ${JSON.stringify(meta)}` : "";
+      const line = `[${timestamp}] [${level}] ${message}${metaStr}
+`;
+      if (fs4.existsSync(this.logFilePath)) {
+        const stat = fs4.statSync(this.logFilePath);
+        if (stat.size > this.maxSizeBytes) {
+          const oldPath = `${this.logFilePath}.1`;
+          try {
+            if (fs4.existsSync(oldPath)) fs4.unlinkSync(oldPath);
+            fs4.renameSync(this.logFilePath, oldPath);
+          } catch {
+          }
+        }
+      }
+      fs4.appendFileSync(this.logFilePath, line, "utf8");
+    } catch {
+    }
+  }
+};
+var logger = Logger.getInstance();
+
+// src/indexer/worker.ts
+import * as fs6 from "fs";
+import * as os from "os";
+import * as path6 from "path";
+
+// src/indexer/lock.ts
+import * as fs5 from "fs";
+import * as path5 from "path";
 var ProcessLock = class {
   lockFilePath;
   hasLock = false;
   constructor(lockDir) {
-    this.lockFilePath = path4.join(lockDir, ".indexer.lock");
+    this.lockFilePath = path5.join(lockDir, ".indexer.lock");
   }
   acquire() {
     try {
-      if (!fs4.existsSync(path4.dirname(this.lockFilePath))) {
-        fs4.mkdirSync(path4.dirname(this.lockFilePath), { recursive: true });
+      if (!fs5.existsSync(path5.dirname(this.lockFilePath))) {
+        fs5.mkdirSync(path5.dirname(this.lockFilePath), { recursive: true });
       }
-      if (fs4.existsSync(this.lockFilePath)) {
-        const rawPid = fs4.readFileSync(this.lockFilePath, "utf8").trim();
+      if (fs5.existsSync(this.lockFilePath)) {
+        const rawPid = fs5.readFileSync(this.lockFilePath, "utf8").trim();
         const existingPid = parseInt(rawPid, 10);
         if (!isNaN(existingPid) && existingPid !== process.pid && this.isPidAlive(existingPid)) {
           return false;
         }
       }
-      fs4.writeFileSync(this.lockFilePath, String(process.pid), "utf8");
+      fs5.writeFileSync(this.lockFilePath, String(process.pid), "utf8");
       this.hasLock = true;
       return true;
     } catch {
@@ -1257,10 +1468,10 @@ var ProcessLock = class {
   release() {
     if (this.hasLock) {
       try {
-        if (fs4.existsSync(this.lockFilePath)) {
-          const rawPid = fs4.readFileSync(this.lockFilePath, "utf8").trim();
+        if (fs5.existsSync(this.lockFilePath)) {
+          const rawPid = fs5.readFileSync(this.lockFilePath, "utf8").trim();
           if (parseInt(rawPid, 10) === process.pid) {
-            fs4.unlinkSync(this.lockFilePath);
+            fs5.unlinkSync(this.lockFilePath);
           }
         }
       } catch {
@@ -1303,10 +1514,10 @@ var IndexerWorker = class {
   isInitialized = false;
   saveStatusSnapshot() {
     try {
-      if (!fs5.existsSync(this.config.dbPath)) {
-        fs5.mkdirSync(this.config.dbPath, { recursive: true });
+      if (!fs6.existsSync(this.config.dbPath)) {
+        fs6.mkdirSync(this.config.dbPath, { recursive: true });
       }
-      const statusFilePath = path5.join(this.config.dbPath, "status.json");
+      const statusFilePath = path6.join(this.config.dbPath, "status.json");
       const data = JSON.stringify(
         {
           ...this.status,
@@ -1316,12 +1527,31 @@ var IndexerWorker = class {
         null,
         2
       );
-      fs5.writeFileSync(statusFilePath, data, "utf8");
+      fs6.writeFileSync(statusFilePath, data, "utf8");
     } catch {
     }
   }
   async init() {
     if (this.isInitialized) return;
+    const localTableDir = path6.join(this.config.dbPath, "code_chunks.lance");
+    if (!fs6.existsSync(localTableDir)) {
+      const mainWorktreeRoot = resolveMainWorktreeProjectRoot(this.config.projectRoot);
+      if (mainWorktreeRoot) {
+        try {
+          const mainConfig = loadConfig(mainWorktreeRoot);
+          const mainTableDir = path6.join(mainConfig.dbPath, "code_chunks.lance");
+          if (fs6.existsSync(mainTableDir)) {
+            fs6.mkdirSync(this.config.dbPath, { recursive: true });
+            fs6.cpSync(mainTableDir, localTableDir, { recursive: true });
+            logger.info("Seeded worktree LanceDB index from main repository", {
+              from: mainTableDir,
+              to: localTableDir
+            });
+          }
+        } catch {
+        }
+      }
+    }
     await this.store.init();
     const count = await this.store.count();
     const stats = await this.store.getIndexedFileStats();
@@ -1351,10 +1581,10 @@ var IndexerWorker = class {
       return;
     }
     if (!this.lock.acquire()) {
-      const statusFile = path5.join(this.config.dbPath, "status.json");
-      if (fs5.existsSync(statusFile)) {
+      const statusFile = path6.join(this.config.dbPath, "status.json");
+      if (fs6.existsSync(statusFile)) {
         try {
-          const raw = JSON.parse(fs5.readFileSync(statusFile, "utf8"));
+          const raw = JSON.parse(fs6.readFileSync(statusFile, "utf8"));
           this.status = {
             state: raw.state || "indexing",
             progressPercentage: raw.progressPercentage ?? 0,
@@ -1381,6 +1611,15 @@ var IndexerWorker = class {
       return;
     }
     this.isRunning = true;
+    const indexingStartTime = Date.now();
+    let prevPriority = null;
+    if (mode === "gentle") {
+      try {
+        prevPriority = os.getPriority(process.pid);
+        os.setPriority(process.pid, 10);
+      } catch {
+      }
+    }
     try {
       this.status.state = "scanning";
       this.status.error = void 0;
@@ -1391,8 +1630,8 @@ var IndexerWorker = class {
       }
       const indexedFilesMap = forceFull ? /* @__PURE__ */ new Map() : await this.store.getIndexedFileStats();
       const scan = await scanDirectory(this.config, indexedFilesMap);
-      for (const relPath of scan.filesToDelete) {
-        await this.store.deleteByFilePath(relPath);
+      if (scan.filesToDelete.length > 0) {
+        await this.store.deleteByFilePaths(scan.filesToDelete);
       }
       this.status.totalFiles = scan.totalFilesCount;
       this.status.indexedFiles = scan.unchangedFilesCount;
@@ -1409,23 +1648,42 @@ var IndexerWorker = class {
         onProgress?.({ ...this.status });
         return;
       }
+      logger.info("Indexing started", {
+        mode,
+        forceFull,
+        totalFiles: scan.totalFilesCount,
+        filesToIndex: scan.filesToIndex.length,
+        unchangedFiles: scan.unchangedFilesCount,
+        deletedFiles: scan.filesToDelete.length
+      });
       this.status.state = "indexing";
       this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
       let processedInScan = 0;
-      const batchSize = Math.min(this.config.batchSize, mode === "gentle" ? 20 : this.config.batchSize);
+      let skippedByContentHash = 0;
+      const batchSize = Math.min(this.config.batchSize, mode === "gentle" ? 8 : this.config.batchSize);
+      const onnxMicroBatchSize = mode === "gentle" ? 8 : 16;
+      const onnxInterSliceDelayMs = options.batchDelayMs !== void 0 ? Math.min(options.batchDelayMs, 25) : mode === "gentle" ? 35 : 0;
       for (let i = 0; i < scan.filesToIndex.length; i += batchSize) {
+        const batchStartMs = Date.now();
         const batch = scan.filesToIndex.slice(i, i + batchSize);
         const batchChunks = [];
         const batchRelPaths = [];
         for (const file of batch) {
           this.status.currentFile = file.relativePath;
-          batchRelPaths.push(file.relativePath);
           try {
-            if (fs5.existsSync(file.absolutePath)) {
-              const content = fs5.readFileSync(file.absolutePath, "utf8");
+            if (fs6.existsSync(file.absolutePath)) {
+              const content = fs6.readFileSync(file.absolutePath, "utf8");
               const fileChunks = chunkCodeFile(file.relativePath, file.absolutePath, content);
+              const prevStats = indexedFilesMap.get(file.relativePath);
+              if (prevStats && prevStats.chunkHashes && prevStats.chunkCount === fileChunks.length && fileChunks.length > 0 && fileChunks.every((c) => prevStats.chunkHashes.has(c.contentHash))) {
+                skippedByContentHash++;
+                continue;
+              }
+              batchRelPaths.push(file.relativePath);
               batchChunks.push(...fileChunks);
+            } else {
+              batchRelPaths.push(file.relativePath);
             }
           } catch (fileErr) {
             console.warn(`[code-search-mcp] Failed to read ${file.relativePath}:`, fileErr);
@@ -1433,7 +1691,7 @@ var IndexerWorker = class {
         }
         if (batchChunks.length > 0) {
           const texts = batchChunks.map((c) => formatChunkForEmbedding(c));
-          const vectors = await this.embeddings.embedBatch(texts, 32);
+          const vectors = await this.embeddings.embedBatch(texts, onnxMicroBatchSize, onnxInterSliceDelayMs);
           for (let j = 0; j < batchChunks.length; j++) {
             batchChunks[j].vector = vectors[j];
           }
@@ -1450,8 +1708,12 @@ var IndexerWorker = class {
         this.saveStatusSnapshot();
         onProgress?.({ ...this.status });
         await new Promise((resolve5) => setImmediate(resolve5));
-        if (batchDelayMs > 0 && i + batchSize < scan.filesToIndex.length) {
-          await new Promise((resolve5) => setTimeout(resolve5, batchDelayMs));
+        if (i + batchSize < scan.filesToIndex.length && batchChunks.length > 0) {
+          const batchElapsedMs = Date.now() - batchStartMs;
+          const effectiveDelayMs = options.batchDelayMs !== void 0 ? options.batchDelayMs : mode === "gentle" ? Math.min(1200, Math.max(150, Math.round(batchElapsedMs * 0.6))) : 0;
+          if (effectiveDelayMs > 0) {
+            await new Promise((resolve5) => setTimeout(resolve5, effectiveDelayMs));
+          }
         }
       }
       this.status.state = "ready";
@@ -1465,13 +1727,27 @@ var IndexerWorker = class {
       }
       this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
+      logger.info("Indexing completed", {
+        mode,
+        indexedFiles: this.status.indexedFiles,
+        indexedChunks: this.status.indexedChunks,
+        skippedByContentHash,
+        durationMs: Date.now() - indexingStartTime
+      });
     } catch (err) {
       this.status.state = "error";
       this.status.error = err?.message || String(err);
+      logger.error("Indexing worker error", { error: this.status.error });
       console.error("[code-search-mcp] Indexing worker error:", err);
       this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
     } finally {
+      if (prevPriority !== null) {
+        try {
+          os.setPriority(process.pid, prevPriority);
+        } catch {
+        }
+      }
       this.isRunning = false;
       this.lock.release();
       this.saveStatusSnapshot();
@@ -1485,13 +1761,13 @@ var IndexerWorker = class {
     if (!this.isInitialized) {
       await this.init();
     }
-    const absPath = absolutePath || path5.join(this.config.projectRoot, relativePath);
+    const absPath = absolutePath || path6.join(this.config.projectRoot, relativePath);
     const normRelPath = normalizePath(relativePath);
-    if (!fs5.existsSync(absPath)) {
+    if (!fs6.existsSync(absPath)) {
       await this.store.deleteByFilePath(normRelPath);
       return;
     }
-    const content = fs5.readFileSync(absPath, "utf8");
+    const content = fs6.readFileSync(absPath, "utf8");
     const chunks = chunkCodeFile(normRelPath, absPath, content);
     if (chunks.length === 0) {
       await this.store.deleteByFilePath(normRelPath);
@@ -1574,8 +1850,8 @@ var IndexerWorker = class {
 
 // src/indexer/watcher.ts
 import chokidar from "chokidar";
-import * as fs6 from "fs";
-import * as path6 from "path";
+import * as fs7 from "fs";
+import * as path7 from "path";
 var FileWatcher = class {
   config;
   worker;
@@ -1603,7 +1879,7 @@ var FileWatcher = class {
     this.readyPromise = new Promise((resolve5) => {
       this.watcher = chokidar.watch(this.config.projectRoot, {
         ignored: (filePath, stats) => {
-          const rel = normalizePath(path6.relative(this.config.projectRoot, filePath));
+          const rel = normalizePath(path7.relative(this.config.projectRoot, filePath));
           if (!rel || rel === ".") return false;
           if (rel.startsWith("node_modules") || rel.startsWith(".git") || rel.startsWith(".code-search") || rel.includes("/node_modules/") || rel.startsWith("dist") || rel.startsWith("build") || rel.startsWith(".cache")) {
             return true;
@@ -1632,26 +1908,26 @@ var FileWatcher = class {
     }
   }
   handleFileChange(filePath) {
-    const ext = path6.extname(filePath).toLowerCase();
+    const ext = path7.extname(filePath).toLowerCase();
     if (!this.supportedExts.has(ext)) return;
-    let absPath = path6.resolve(filePath);
+    let absPath = path7.resolve(filePath);
     try {
-      absPath = fs6.realpathSync(absPath);
+      absPath = fs7.realpathSync(absPath);
     } catch {
     }
-    const relPath = normalizePath(path6.relative(this.config.projectRoot, absPath));
+    const relPath = normalizePath(path7.relative(this.config.projectRoot, absPath));
     if (!relPath || relPath.startsWith("..") || this.matcher.ignores(relPath)) return;
     this.pendingDeletes.delete(relPath);
     this.pendingUpdates.set(relPath, absPath);
     this.scheduleFlush();
   }
   handleFileUnlink(filePath) {
-    let absPath = path6.resolve(filePath);
+    let absPath = path7.resolve(filePath);
     try {
-      absPath = fs6.realpathSync(absPath);
+      absPath = fs7.realpathSync(absPath);
     } catch {
     }
-    const relPath = normalizePath(path6.relative(this.config.projectRoot, absPath));
+    const relPath = normalizePath(path7.relative(this.config.projectRoot, absPath));
     if (!relPath || relPath.startsWith("..")) return;
     this.pendingUpdates.delete(relPath);
     this.pendingDeletes.add(relPath);
@@ -1726,13 +2002,13 @@ var FileWatcher = class {
 };
 
 // src/cli/init.ts
-import * as fs8 from "fs";
-import * as path8 from "path";
+import * as fs9 from "fs";
+import * as path9 from "path";
 import { select, confirm, input } from "@inquirer/prompts";
 
 // src/cli/detector.ts
-import * as fs7 from "fs";
-import * as path7 from "path";
+import * as fs8 from "fs";
+import * as path8 from "path";
 var KNOWN_CODE_EXTENSIONS = /* @__PURE__ */ new Set([
   ...DEFAULT_EXTENSIONS,
   ".html",
@@ -1763,7 +2039,7 @@ var KNOWN_CODE_EXTENSIONS = /* @__PURE__ */ new Set([
   ".lisp"
 ]);
 function detectProjectExtensions(projectRoot, options = {}) {
-  const canonicalRoot = path7.resolve(projectRoot);
+  const canonicalRoot = path8.resolve(projectRoot);
   const respectGitignore = options.respectGitignore ?? true;
   const maxFiles = options.maxFilesToSample ?? 5e4;
   const matcher = createIgnoreMatcher(canonicalRoot, [], respectGitignore);
@@ -1773,14 +2049,14 @@ function detectProjectExtensions(projectRoot, options = {}) {
     if (totalFiles >= maxFiles) return;
     let entries;
     try {
-      entries = fs7.readdirSync(currentDir, { withFileTypes: true });
+      entries = fs8.readdirSync(currentDir, { withFileTypes: true });
     } catch {
       return;
     }
     for (const entry of entries) {
       if (totalFiles >= maxFiles) break;
-      const fullPath = path7.join(currentDir, entry.name);
-      const relPath = normalizePath(path7.relative(canonicalRoot, fullPath));
+      const fullPath = path8.join(currentDir, entry.name);
+      const relPath = normalizePath(path8.relative(canonicalRoot, fullPath));
       const isDir = entry.isDirectory();
       if (matcher.ignores(relPath, isDir)) {
         continue;
@@ -1788,7 +2064,7 @@ function detectProjectExtensions(projectRoot, options = {}) {
       if (isDir) {
         walk(fullPath);
       } else if (entry.isFile()) {
-        const ext = path7.extname(entry.name).toLowerCase();
+        const ext = path8.extname(entry.name).toLowerCase();
         if (ext && KNOWN_CODE_EXTENSIONS.has(ext)) {
           counts[ext] = (counts[ext] || 0) + 1;
           totalFiles++;
@@ -1806,7 +2082,7 @@ function detectProjectExtensions(projectRoot, options = {}) {
   };
 }
 function detectIgnoreCandidates(projectRoot) {
-  const root = path7.resolve(projectRoot);
+  const root = path8.resolve(projectRoot);
   const found = /* @__PURE__ */ new Map();
   const directChecks = [
     { pattern: ".github/skills", glob: ".github/skills/**", label: ".github/skills/** (AI agent skills)" },
@@ -1818,7 +2094,7 @@ function detectIgnoreCandidates(projectRoot) {
     { pattern: "docs", glob: "docs/**", label: "docs/** (Documentation markdown)" }
   ];
   for (const check of directChecks) {
-    if (fs7.existsSync(path7.join(root, check.pattern))) {
+    if (fs8.existsSync(path8.join(root, check.pattern))) {
       found.set(check.glob, { path: check.glob, label: check.label, exists: true });
     }
   }
@@ -1836,7 +2112,7 @@ function detectIgnoreCandidates(projectRoot) {
     if (depth > 3) return;
     let entries;
     try {
-      entries = fs7.readdirSync(dir, { withFileTypes: true });
+      entries = fs8.readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
@@ -1850,7 +2126,7 @@ function detectIgnoreCandidates(projectRoot) {
           const match = targetDirNames[name];
           found.set(match.glob, { path: match.glob, label: match.label, exists: true });
         }
-        scanDirs(path7.join(dir, entry.name), depth + 1);
+        scanDirs(path8.join(dir, entry.name), depth + 1);
       }
     }
   }
@@ -1860,10 +2136,10 @@ function detectIgnoreCandidates(projectRoot) {
 
 // src/cli/init.ts
 async function runInit(options = {}) {
-  const targetDir = options.projectRoot ? path8.resolve(options.projectRoot) : findProjectRoot(process.cwd());
+  const targetDir = options.projectRoot ? path9.resolve(options.projectRoot) : findProjectRoot(process.cwd());
   let canonicalRoot = targetDir;
   try {
-    canonicalRoot = fs8.realpathSync(targetDir);
+    canonicalRoot = fs9.realpathSync(targetDir);
   } catch {
   }
   const isInteractive = !options.yes;
@@ -1878,7 +2154,7 @@ async function runInit(options = {}) {
       default: false
     });
   }
-  const hasNodeModules = fs8.existsSync(path8.join(canonicalRoot, "node_modules"));
+  const hasNodeModules = fs9.existsSync(path9.join(canonicalRoot, "node_modules"));
   let chosenIndexPath = options.indexPath;
   if (!chosenIndexPath) {
     if (isInteractive) {
@@ -1920,8 +2196,8 @@ async function runInit(options = {}) {
       default: true
     });
   }
-  const ignoreFilePath = path8.join(canonicalRoot, ".codesearchignore");
-  const ignoreFileExists = fs8.existsSync(ignoreFilePath);
+  const ignoreFilePath = path9.join(canonicalRoot, ".codesearchignore");
+  const ignoreFileExists = fs9.existsSync(ignoreFilePath);
   let createIgnoreFile = options.createIgnoreFile ?? !ignoreFileExists;
   let extraCustomExcludes = [];
   if (isInteractive && options.createIgnoreFile === void 0) {
@@ -1990,22 +2266,22 @@ async function runInit(options = {}) {
     }
   }
   if (cleanExisting) {
-    const fullDbPath = path8.isAbsolute(chosenIndexPath) ? chosenIndexPath : path8.join(canonicalRoot, chosenIndexPath);
-    if (fs8.existsSync(fullDbPath)) {
+    const fullDbPath = path9.isAbsolute(chosenIndexPath) ? chosenIndexPath : path9.join(canonicalRoot, chosenIndexPath);
+    if (fs9.existsSync(fullDbPath)) {
       try {
-        fs8.rmSync(fullDbPath, { recursive: true, force: true });
+        fs9.rmSync(fullDbPath, { recursive: true, force: true });
       } catch {
       }
     }
   }
-  const gitignorePath = path8.join(canonicalRoot, ".gitignore");
-  if (fs8.existsSync(gitignorePath)) {
+  const gitignorePath = path9.join(canonicalRoot, ".gitignore");
+  if (fs9.existsSync(gitignorePath)) {
     try {
-      const gitignoreContent = fs8.readFileSync(gitignorePath, "utf8");
+      const gitignoreContent = fs9.readFileSync(gitignorePath, "utf8");
       const relIndexPath = chosenIndexPath.replace(/\\/g, "/");
       if (!relIndexPath.startsWith("node_modules") && !gitignoreContent.includes(".code-search")) {
         const toAppend = "\n# code-search vector database index\n.code-search/\n";
-        fs8.appendFileSync(gitignorePath, toAppend, "utf8");
+        fs9.appendFileSync(gitignorePath, toAppend, "utf8");
         if (isInteractive) {
           console.log("\u{1F6E1} Added .code-search/ to .gitignore");
         }
@@ -2013,7 +2289,7 @@ async function runInit(options = {}) {
     } catch {
     }
   }
-  const rcPath = path8.join(canonicalRoot, ".codesearchrc.json");
+  const rcPath = path9.join(canonicalRoot, ".codesearchrc.json");
   const rcContent = {
     $schema: "https://raw.githubusercontent.com/genautkin/code-search-mcp/main/schema.json",
     version: 1,
@@ -2024,12 +2300,12 @@ async function runInit(options = {}) {
     maxFileSizeKb: DEFAULT_CONFIG.maxFileSizeKb,
     embeddingModel: DEFAULT_CONFIG.embeddingModel
   };
-  fs8.writeFileSync(rcPath, JSON.stringify(rcContent, null, 2) + "\n", "utf8");
+  fs9.writeFileSync(rcPath, JSON.stringify(rcContent, null, 2) + "\n", "utf8");
   if (isInteractive) {
     console.log(`\u2705 Saved configuration to ${rcPath}`);
   }
-  if (createIgnoreFile && !fs8.existsSync(ignoreFilePath)) {
-    fs8.writeFileSync(ignoreFilePath, RECOMMENDED_CODESEARCHIGNORE, "utf8");
+  if (createIgnoreFile && !fs9.existsSync(ignoreFilePath)) {
+    fs9.writeFileSync(ignoreFilePath, RECOMMENDED_CODESEARCHIGNORE, "utf8");
     if (isInteractive) {
       console.log(`\u2705 Created ${ignoreFilePath}`);
     }
@@ -2063,6 +2339,7 @@ async function runInit(options = {}) {
 }
 
 // src/server/mcp.ts
+import * as path10 from "path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -2101,7 +2378,7 @@ async function createMcpServer(initialConfig) {
       tools: [
         {
           name: "code_search",
-          description: 'Search the codebase semantically using natural language queries (e.g. "how is payment verified", "calculate discount rate"). Returns relevant code snippets with file paths and line numbers. Supports filtering by directory path, programming language, or codeOnly (to exclude markdown docs).',
+          description: "PRIMARY CODEBASE DISCOVERY TOOL \u2014 Call `code_search` FIRST before running multiple `grep` or file-search calls when locating features, domain logic, UI components, services, or business rules, or when you do not know the exact file path or symbol name. Uses a pre-indexed Hybrid engine (semantic vectors + CamelCase/snake_case identifier splitting + typo-tolerant symbol matching) to return the top ranked code snippets with exact file paths and line numbers in a single <50ms call. Supports filtering by directory (`pathFilter`), `language`, or `codeOnly: true` (to exclude markdown docs).",
           inputSchema: {
             type: "object",
             properties: {
@@ -2201,6 +2478,11 @@ async function createMcpServer(initialConfig) {
       });
       currentConfig = loadConfig(currentConfig.projectRoot);
       isInit = true;
+      logger.init(path10.dirname(currentConfig.dbPath));
+      logger.info("Project initialized via code_search_init", {
+        projectRoot: currentConfig.projectRoot,
+        dbPath: currentConfig.dbPath
+      });
       worker = new IndexerWorker(currentConfig);
       await worker.init();
       watcher = new FileWatcher(currentConfig, worker);
@@ -2271,11 +2553,22 @@ To enable semantic search:
           ]
         };
       }
+      const t0 = Date.now();
       const res = await worker.query(query, {
         limit,
         pathFilter,
         language,
         codeOnly
+      });
+      logger.info("Tool call: code_search", {
+        query,
+        limit,
+        pathFilter,
+        language,
+        codeOnly,
+        resultsCount: res.results.length,
+        indexState: res.status.state,
+        durationMs: Date.now() - t0
       });
       return {
         content: [
@@ -2299,6 +2592,12 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
         };
       }
       const status = worker.getStatus();
+      logger.info("Tool call: code_search_status", {
+        state: status.state,
+        progressPercentage: status.progressPercentage,
+        indexedFiles: status.indexedFiles,
+        totalFiles: status.totalFiles
+      });
       const text = [
         `Index Status: ${status.state.toUpperCase()}`,
         `Progress: ${status.progressPercentage}%`,
@@ -2331,6 +2630,7 @@ Project ${currentConfig.projectRoot} is not initialized. Run code_search_init to
       await ensureInitialized();
       const forceFull = Boolean(args?.forceFull);
       const mode = args?.mode || "fast";
+      logger.info("Tool call: code_search_reindex", { forceFull, mode });
       worker.startIndexing({ forceFull, mode }).catch((err) => {
         console.error("[code-search-mcp] Reindex error:", err);
       });
@@ -2402,6 +2702,8 @@ export {
   DEFAULT_CONFIG,
   RECOMMENDED_CODESEARCHIGNORE,
   findProjectRoot,
+  resolveMainWorktreeProjectRoot,
+  isGlobalPluginDir,
   isProjectInitialized,
   createIgnoreMatcher,
   loadConfig,
@@ -2415,9 +2717,10 @@ export {
   TABLE_NAME,
   VectorStore,
   scanDirectory,
+  logger,
   IndexerWorker,
   FileWatcher,
   runInit,
   createMcpServer
 };
-//# sourceMappingURL=chunk-XSSBHW6M.js.map
+//# sourceMappingURL=chunk-ATMT4WQC.js.map

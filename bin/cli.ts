@@ -221,14 +221,17 @@ program
         config.embeddingModel = options.model;
       }
 
-      // Initialize persistent file logger
-      logger.init(path.dirname(config.dbPath));
-      logger.info('Starting code-search-mcp session', {
-        projectRoot: config.projectRoot,
-        dbPath: config.dbPath,
-        model: config.embeddingModel,
-        pid: process.pid
-      });
+      // Only initialize persistent file logger if project is already initialized
+      // (prevents creating .code-search / node_modules/.cache/code-search in uninitialized folders)
+      if (isProjectInitialized(config.projectRoot)) {
+        logger.init(path.dirname(config.dbPath));
+        logger.info('Starting code-search-mcp session', {
+          projectRoot: config.projectRoot,
+          dbPath: config.dbPath,
+          model: config.embeddingModel,
+          pid: process.pid
+        });
+      }
 
       // Output diagnostic info to stderr (stdio stdout is reserved for MCP protocol)
       process.stderr.write(`[code-search-mcp] Initializing in: ${config.projectRoot}\n`);

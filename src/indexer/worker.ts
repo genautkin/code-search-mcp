@@ -1,10 +1,13 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { CodeChunk, CodeSearchConfig, IndexStatus, SearchOptions, SearchResult, StartIndexingOptions } from '../types.js';
 import { VectorStore } from '../store/lancedb.js';
 import { EmbeddingEngine } from '../embeddings/engine.js';
 import { scanDirectory } from './scanner.js';
 import { chunkCodeFile, formatChunkForEmbedding, normalizePath } from './chunker.js';
+import { loadConfig, resolveMainWorktreeProjectRoot } from '../config/loader.js';
+import { logger } from '../logger.js';
 
 import { ProcessLock } from './lock.js';
 
@@ -56,6 +59,29 @@ export class IndexerWorker {
 
   public async init(): Promise<void> {
     if (this.isInitialized) return;
+
+    // Seed from main git worktree's LanceDB index if this worktree has no index yet
+    const localTableDir = path.join(this.config.dbPath, 'code_chunks.lance');
+    if (!fs.existsSync(localTableDir)) {
+      const mainWorktreeRoot = resolveMainWorktreeProjectRoot(this.config.projectRoot);
+      if (mainWorktreeRoot) {
+        try {
+          const mainConfig = loadConfig(mainWorktreeRoot);
+          const mainTableDir = path.join(mainConfig.dbPath, 'code_chunks.lance');
+          if (fs.existsSync(mainTableDir)) {
+            fs.mkdirSync(this.config.dbPath, { recursive: true });
+            fs.cpSync(mainTableDir, localTableDir, { recursive: true });
+            logger.info('Seeded worktree LanceDB index from main repository', {
+              from: mainTableDir,
+              to: localTableDir
+            });
+          }
+        } catch {
+          // Non-blocking fallback to normal indexing if copy fails
+        }
+      }
+    }
+
     await this.store.init();
     const count = await this.store.count();
     const stats = await this.store.getIndexedFileStats();
@@ -129,6 +155,16 @@ export class IndexerWorker {
     }
 
     this.isRunning = true;
+    const indexingStartTime = Date.now();
+    let prevPriority: number | null = null;
+    if (mode === 'gentle') {
+      try {
+        prevPriority = os.getPriority(process.pid);
+        os.setPriority(process.pid, 10);
+      } catch {
+        // Ignore priority errors on unsupported platforms
+      }
+    }
 
     try {
       this.status.state = 'scanning';
@@ -143,9 +179,9 @@ export class IndexerWorker {
       const indexedFilesMap = forceFull ? new Map() : await this.store.getIndexedFileStats();
       const scan = await scanDirectory(this.config, indexedFilesMap);
 
-      // Clean up deleted files
-      for (const relPath of scan.filesToDelete) {
-        await this.store.deleteByFilePath(relPath);
+      // Clean up deleted files in bulk
+      if (scan.filesToDelete.length > 0) {
+        await this.store.deleteByFilePaths(scan.filesToDelete);
       }
 
       this.status.totalFiles = scan.totalFilesCount;
@@ -166,27 +202,58 @@ export class IndexerWorker {
         return;
       }
 
+      logger.info('Indexing started', {
+        mode,
+        forceFull,
+        totalFiles: scan.totalFilesCount,
+        filesToIndex: scan.filesToIndex.length,
+        unchangedFiles: scan.unchangedFilesCount,
+        deletedFiles: scan.filesToDelete.length
+      });
+
       this.status.state = 'indexing';
       this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
 
       let processedInScan = 0;
-      // In gentle mode, use smaller file batches (max 20) to prevent event loop starvation
-      const batchSize = Math.min(this.config.batchSize, mode === 'gentle' ? 20 : this.config.batchSize);
+      let skippedByContentHash = 0;
+      // In gentle mode, use smaller file batches (max 8) to prevent CPU spikes and event loop starvation
+      const batchSize = Math.min(this.config.batchSize, mode === 'gentle' ? 8 : this.config.batchSize);
+      const onnxMicroBatchSize = mode === 'gentle' ? 8 : 16;
+      const onnxInterSliceDelayMs =
+        options.batchDelayMs !== undefined ? Math.min(options.batchDelayMs, 25) : (mode === 'gentle' ? 35 : 0);
 
       for (let i = 0; i < scan.filesToIndex.length; i += batchSize) {
+        const batchStartMs = Date.now();
         const batch = scan.filesToIndex.slice(i, i + batchSize);
         const batchChunks: CodeChunk[] = [];
         const batchRelPaths: string[] = [];
 
         for (const file of batch) {
           this.status.currentFile = file.relativePath;
-          batchRelPaths.push(file.relativePath);
           try {
             if (fs.existsSync(file.absolutePath)) {
               const content = fs.readFileSync(file.absolutePath, 'utf8');
               const fileChunks = chunkCodeFile(file.relativePath, file.absolutePath, content);
+
+              // Content-hash deduplication: if file mtime changed (e.g. git checkout / worktree switch)
+              // but all chunk hashes match what is already stored in LanceDB, skip ONNX & DB writes
+              const prevStats = indexedFilesMap.get(file.relativePath);
+              if (
+                prevStats &&
+                prevStats.chunkHashes &&
+                prevStats.chunkCount === fileChunks.length &&
+                fileChunks.length > 0 &&
+                fileChunks.every((c) => prevStats.chunkHashes.has(c.contentHash))
+              ) {
+                skippedByContentHash++;
+                continue;
+              }
+
+              batchRelPaths.push(file.relativePath);
               batchChunks.push(...fileChunks);
+            } else {
+              batchRelPaths.push(file.relativePath);
             }
           } catch (fileErr) {
             console.warn(`[code-search-mcp] Failed to read ${file.relativePath}:`, fileErr);
@@ -194,9 +261,9 @@ export class IndexerWorker {
         }
 
         if (batchChunks.length > 0) {
-          // Generate embeddings with contextual breadcrumbs in vectorized ONNX passes (32 per slice)
+          // Generate embeddings with contextual breadcrumbs in length-sorted ONNX micro-batches
           const texts = batchChunks.map((c) => formatChunkForEmbedding(c));
-          const vectors = await this.embeddings.embedBatch(texts, 32);
+          const vectors = await this.embeddings.embedBatch(texts, onnxMicroBatchSize, onnxInterSliceDelayMs);
           for (let j = 0; j < batchChunks.length; j++) {
             batchChunks[j].vector = vectors[j];
           }
@@ -218,8 +285,17 @@ export class IndexerWorker {
 
         // Cooperative event loop yield to keep server responsive
         await new Promise((resolve) => setImmediate(resolve));
-        if (batchDelayMs > 0 && i + batchSize < scan.filesToIndex.length) {
-          await new Promise((resolve) => setTimeout(resolve, batchDelayMs));
+        if (i + batchSize < scan.filesToIndex.length && batchChunks.length > 0) {
+          const batchElapsedMs = Date.now() - batchStartMs;
+          const effectiveDelayMs =
+            options.batchDelayMs !== undefined
+              ? options.batchDelayMs
+              : mode === 'gentle'
+                ? Math.min(1200, Math.max(150, Math.round(batchElapsedMs * 0.6)))
+                : 0;
+          if (effectiveDelayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, effectiveDelayMs));
+          }
         }
       }
 
@@ -233,13 +309,26 @@ export class IndexerWorker {
       }
       this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
+      logger.info('Indexing completed', {
+        mode,
+        indexedFiles: this.status.indexedFiles,
+        indexedChunks: this.status.indexedChunks,
+        skippedByContentHash,
+        durationMs: Date.now() - indexingStartTime
+      });
     } catch (err: any) {
       this.status.state = 'error';
       this.status.error = err?.message || String(err);
+      logger.error('Indexing worker error', { error: this.status.error });
       console.error('[code-search-mcp] Indexing worker error:', err);
       this.saveStatusSnapshot();
       onProgress?.({ ...this.status });
     } finally {
+      if (prevPriority !== null) {
+        try {
+          os.setPriority(process.pid, prevPriority);
+        } catch {}
+      }
       this.isRunning = false;
       this.lock.release();
       this.saveStatusSnapshot();

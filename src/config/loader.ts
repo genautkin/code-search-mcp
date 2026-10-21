@@ -29,6 +29,55 @@ export function findProjectRoot(startDir: string = process.cwd()): string {
   }
 }
 
+/**
+ * If `projectRoot` is inside a Git worktree (where `.git` is a file pointing to
+ * `<mainRepo>/.git/worktrees/<name>`), resolves the corresponding directory inside
+ * the main repository so untracked `.codesearchrc.json` and `.codesearchignore`
+ * files are automatically inherited across all worktrees.
+ */
+export function resolveMainWorktreeProjectRoot(projectRoot: string): string | null {
+  let cur = path.resolve(projectRoot);
+  while (true) {
+    const dotGit = path.join(cur, '.git');
+    if (fs.existsSync(dotGit)) {
+      try {
+        const stat = fs.statSync(dotGit);
+        if (stat.isFile()) {
+          const content = fs.readFileSync(dotGit, 'utf8').trim();
+          const match = content.match(/^gitdir:\s*(.+)$/i);
+          if (match) {
+            const gitDir = path.resolve(cur, match[1].trim());
+            // Typical worktree gitdir: /path/to/main/.git/worktrees/<worktree-name>
+            const normalizedGitDir = gitDir.replace(/\\/g, '/');
+            const worktreesMarker = '/.git/worktrees/';
+            const markerIdx = normalizedGitDir.lastIndexOf(worktreesMarker);
+            if (markerIdx !== -1) {
+              const mainRepoRoot = normalizedGitDir.slice(0, markerIdx);
+              const relFromWorktreeRoot = path.relative(cur, path.resolve(projectRoot));
+              const candidate = path.join(mainRepoRoot, relFromWorktreeRoot);
+              if (fs.existsSync(candidate)) {
+                return candidate;
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+      break;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return null;
+}
+
+export function isGlobalPluginDir(dirPath: string): boolean {
+  const norm = dirPath.replace(/\\/g, '/');
+  return norm.includes('/.gemini/config/plugins/') || norm.includes('/.claude/plugins/');
+}
+
 export function isProjectInitialized(projectRoot: string): boolean {
   let canonicalRoot = path.resolve(projectRoot);
   try {
@@ -36,11 +85,30 @@ export function isProjectInitialized(projectRoot: string): boolean {
   } catch {
     // fallback
   }
+
+  if (isGlobalPluginDir(canonicalRoot)) {
+    return false;
+  }
+
   const rcPath = path.join(canonicalRoot, '.codesearchrc.json');
   const dotFolder = path.join(canonicalRoot, '.code-search');
-  const nmCache = path.join(canonicalRoot, 'node_modules', '.cache', 'code-search');
+  const nmCache = path.join(canonicalRoot, 'node_modules', '.cache', 'code-search', 'lancedb');
 
-  return fs.existsSync(rcPath) || fs.existsSync(dotFolder) || fs.existsSync(nmCache);
+  if (fs.existsSync(rcPath) || fs.existsSync(dotFolder) || fs.existsSync(nmCache)) {
+    return true;
+  }
+
+  const mainWorktreeRoot = resolveMainWorktreeProjectRoot(canonicalRoot);
+  if (mainWorktreeRoot) {
+    if (
+      fs.existsSync(path.join(mainWorktreeRoot, '.codesearchrc.json')) ||
+      fs.existsSync(path.join(mainWorktreeRoot, '.codesearchignore'))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function createIgnoreMatcher(
@@ -99,7 +167,7 @@ export function createIgnoreMatcher(
     }
   }
 
-  // 4. Add .codesearchignore if exists
+  // 4. Add .codesearchignore if exists (or inherit from main git worktree)
   const codesearchIgnorePath = path.join(projectRoot, '.codesearchignore');
   if (fs.existsSync(codesearchIgnorePath)) {
     try {
@@ -107,6 +175,19 @@ export function createIgnoreMatcher(
       ig.add(content);
     } catch {
       // Ignore read errors
+    }
+  } else {
+    const mainWorktreeRoot = resolveMainWorktreeProjectRoot(projectRoot);
+    if (mainWorktreeRoot) {
+      const mainIgnorePath = path.join(mainWorktreeRoot, '.codesearchignore');
+      if (fs.existsSync(mainIgnorePath)) {
+        try {
+          const content = fs.readFileSync(mainIgnorePath, 'utf8');
+          ig.add(content);
+        } catch {
+          // Ignore read errors
+        }
+      }
     }
   }
 
@@ -149,7 +230,17 @@ export function loadConfig(projectRoot: string): CodeSearchConfig {
 
   let fileConfig: FileConfigShape = {};
 
-  const configPath = path.join(canonicalRoot, '.codesearchrc.json');
+  let configPath = path.join(canonicalRoot, '.codesearchrc.json');
+  if (!fs.existsSync(configPath)) {
+    const mainWorktreeRoot = resolveMainWorktreeProjectRoot(canonicalRoot);
+    if (mainWorktreeRoot) {
+      const mainRcPath = path.join(mainWorktreeRoot, '.codesearchrc.json');
+      if (fs.existsSync(mainRcPath)) {
+        configPath = mainRcPath;
+      }
+    }
+  }
+
   if (fs.existsSync(configPath)) {
     try {
       const content = fs.readFileSync(configPath, 'utf8');

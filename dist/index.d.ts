@@ -96,6 +96,14 @@ declare const DEFAULT_CONFIG: {
 declare const RECOMMENDED_CODESEARCHIGNORE = "# code-search-mcp ignore patterns\n# Syntax matches standard .gitignore glob rules\n\n# 1. Dependency directories & package caches\nnode_modules/**\nvendor/**\nbower_components/**\n.pnpm-store/**\n\n# 2. Build & distribution artifacts\ndist/**\ndist-*/**\nbuild/**\nout/**\nbin/**\nobj/**\nwww/**\nwwwroot/**\n.cache/**\ncoverage/**\n.nyc_output/**\n\n# 3. AI Agent skills, workflows & system prompts\n.github/skills/**\n.github/instructions/**\n.github/prompts/**\n.gemini/skills/**\n.claude/skills/**\n**/skills/**\n**/.agents/**\n\n# 4. Test fixtures, snapshots and mocks\n**/fixtures/**\n**/__snapshots__/**\n**/mocks/**\n*.snap\n\n# 5. Generated code and type declarations\n*.generated.*\n*.d.ts.map\n\n# 6. Lock files\npackage-lock.json\nyarn.lock\npnpm-lock.yaml\ncomposer.lock\nGemfile.lock\nCargo.lock\npackages.lock.json\n\n# 7. Minified code and source maps\n*.min.js\n*.min.css\n*.map\n\n# 8. Binary assets, archives and OS metadata\n*.png\n*.jpg\n*.jpeg\n*.gif\n*.ico\n*.cur\n*.svg\n*.woff\n*.woff2\n*.ttf\n*.eot\n*.otf\n*.mp3\n*.mp4\n*.wav\n*.zip\n*.tar\n*.gz\n*.7z\n*.rar\n*.pdf\n*.exe\n*.dll\n*.so\n*.dylib\n*.bin\n*.DS_Store\nThumbs.db\n\n# 9. IDE & tooling metadata\n.idea/**\n.vscode/**\n.gemini/**\n.claude/**\n.codegraph/**\n.vectorcode/**\n";
 
 declare function findProjectRoot(startDir?: string): string;
+/**
+ * If `projectRoot` is inside a Git worktree (where `.git` is a file pointing to
+ * `<mainRepo>/.git/worktrees/<name>`), resolves the corresponding directory inside
+ * the main repository so untracked `.codesearchrc.json` and `.codesearchignore`
+ * files are automatically inherited across all worktrees.
+ */
+declare function resolveMainWorktreeProjectRoot(projectRoot: string): string | null;
+declare function isGlobalPluginDir(dirPath: string): boolean;
 declare function isProjectInitialized(projectRoot: string): boolean;
 declare function createIgnoreMatcher(projectRoot: string, customExcludes?: string[], respectGitignore?: boolean): {
     ignores: (relPath: string, isDirectory?: boolean) => boolean;
@@ -106,11 +114,14 @@ declare class EmbeddingEngine {
     private static instance;
     private modelName;
     private extractorPromise;
+    private idleTimer;
+    private readonly idleTimeoutMs;
     private constructor();
     static getInstance(modelName?: string): EmbeddingEngine;
+    private scheduleIdleUnload;
     private getExtractor;
     embedText(text: string): Promise<number[]>;
-    embedBatch(texts: string[], batchSize?: number): Promise<number[][]>;
+    embedBatch(texts: string[], batchSize?: number, interSliceDelayMs?: number): Promise<number[][]>;
 }
 
 declare class QueryEnhancer {
@@ -155,6 +166,8 @@ declare class VectorStore {
     getIndexedFileStats(): Promise<Map<string, {
         updatedAt: number;
         contentHash: string;
+        chunkHashes: Set<string>;
+        chunkCount: number;
     }>>;
     clear(): Promise<void>;
 }
@@ -246,4 +259,4 @@ declare function createMcpServer(initialConfig: CodeSearchConfig): Promise<{
     stop: () => Promise<void>;
 }>;
 
-export { type ChunkerOptions, type CodeChunk, type CodeSearchConfig, DEFAULT_CONFIG, DEFAULT_EXCLUDES, DEFAULT_EXTENSIONS, EmbeddingEngine, type ExtensionDetectionResult, FileWatcher, type IndexStatus, IndexerWorker, type IndexingMode, type IndexingState, type InitOptions, RECOMMENDED_CODESEARCHIGNORE, type ScanResult, type ScannedFile, type SearchOptions, type SearchResult, type StartIndexingOptions, TABLE_NAME, VectorStore, chunkCodeFile, computeHash, createIgnoreMatcher, createMcpServer, detectLanguage, extractChunkSymbols, findProjectRoot, formatChunkForEmbedding, isProjectInitialized, loadConfig, normalizePath, scanDirectory };
+export { type ChunkerOptions, type CodeChunk, type CodeSearchConfig, DEFAULT_CONFIG, DEFAULT_EXCLUDES, DEFAULT_EXTENSIONS, EmbeddingEngine, type ExtensionDetectionResult, FileWatcher, type IndexStatus, IndexerWorker, type IndexingMode, type IndexingState, type InitOptions, RECOMMENDED_CODESEARCHIGNORE, type ScanResult, type ScannedFile, type SearchOptions, type SearchResult, type StartIndexingOptions, TABLE_NAME, VectorStore, chunkCodeFile, computeHash, createIgnoreMatcher, createMcpServer, detectLanguage, extractChunkSymbols, findProjectRoot, formatChunkForEmbedding, isGlobalPluginDir, isProjectInitialized, loadConfig, normalizePath, resolveMainWorktreeProjectRoot, scanDirectory };

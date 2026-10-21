@@ -84,5 +84,42 @@ describe('Config Loader & Ignore Engine', () => {
     const config = loadConfig(tempDir);
     expect(config.dbPath).toBe(path.join(tempDir, '.my-search-db'));
   });
+
+  it('should inherit .codesearchrc.json and .codesearchignore from main git worktree', () => {
+    const mainRepo = path.join(tempDir, 'main-repo');
+    const mainAppDir = path.join(mainRepo, 'packages', 'web-app');
+    const worktreeRoot = path.join(tempDir, 'worktrees', 'feature-branch');
+    const worktreeAppDir = path.join(worktreeRoot, 'packages', 'web-app');
+
+    fs.mkdirSync(path.join(mainRepo, '.git', 'worktrees', 'feature-branch'), { recursive: true });
+    fs.mkdirSync(mainAppDir, { recursive: true });
+    fs.mkdirSync(worktreeAppDir, { recursive: true });
+
+    // Create .git file in worktree root pointing to main repo's .git/worktrees/feature-branch
+    fs.writeFileSync(
+      path.join(worktreeRoot, '.git'),
+      `gitdir: ${path.join(mainRepo, '.git', 'worktrees', 'feature-branch')}\n`
+    );
+
+    // Put .codesearchrc.json and .codesearchignore only in mainAppDir
+    fs.writeFileSync(
+      path.join(mainAppDir, '.codesearchrc.json'),
+      JSON.stringify({
+        supportedExtensions: ['.ts', '.vue'],
+        customExcludes: ['vendor/**']
+      })
+    );
+    fs.writeFileSync(path.join(mainAppDir, '.codesearchignore'), 'src/locales/**\n');
+
+    expect(isProjectInitialized(worktreeAppDir)).toBe(true);
+    const wtConfig = loadConfig(worktreeAppDir);
+    expect(wtConfig.supportedExtensions).toEqual(['.ts', '.vue']);
+    expect(wtConfig.customExcludes).toContain('vendor/**');
+
+    const matcher = createIgnoreMatcher(worktreeAppDir, wtConfig.customExcludes, true);
+    expect(matcher.ignores('src/locales/en/messages.js')).toBe(true);
+    expect(matcher.ignores('vendor/charts.js')).toBe(true);
+    expect(matcher.ignores('src/app.ts')).toBe(false);
+  });
 });
 

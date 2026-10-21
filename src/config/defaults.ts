@@ -24,7 +24,18 @@ export const DEFAULT_EXCLUDES = [
   'coverage', 'coverage/**',
   '.nyc_output', '.nyc_output/**',
   'ios', 'ios/**',
-  'android', 'android/**'
+  'android', 'android/**',
+  // Safe non-source artifacts (lockfiles, minified bundles, source maps, generated files, test snapshots/mocks)
+  'package-lock.json', '**/package-lock.json',
+  'yarn.lock', '**/yarn.lock',
+  'pnpm-lock.yaml', '**/pnpm-lock.yaml',
+  '*.min.js', '**/*.min.js',
+  '*.min.css', '**/*.min.css',
+  '*-min.js', '**/*-min.js',
+  '*.map', '**/*.map',
+  '*.generated.*', '**/*.generated.*',
+  '**/__snapshots__/**', '*.snap',
+  '**/__mocks__/**', '**/mocks/**', '**/fixtures/**'
 ];
 
 export const DEFAULT_CONFIG = {

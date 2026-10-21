@@ -16,11 +16,13 @@ import {
   extractChunkSymbols,
   findProjectRoot,
   formatChunkForEmbedding,
+  isGlobalPluginDir,
   isProjectInitialized,
   loadConfig,
   normalizePath,
+  resolveMainWorktreeProjectRoot,
   scanDirectory
-} from "./chunk-XSSBHW6M.js";
+} from "./chunk-ATMT4WQC.js";
 export {
   DEFAULT_CONFIG,
   DEFAULT_EXCLUDES,
@@ -39,9 +41,11 @@ export {
   extractChunkSymbols,
   findProjectRoot,
   formatChunkForEmbedding,
+  isGlobalPluginDir,
   isProjectInitialized,
   loadConfig,
   normalizePath,
+  resolveMainWorktreeProjectRoot,
   scanDirectory
 };
 //# sourceMappingURL=index.js.map
